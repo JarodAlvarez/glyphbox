@@ -1,3 +1,0 @@
-/Users/jarodalvarez/Projects/glyphbox/build/CMakeFiles/glyphbox.dir
-/Users/jarodalvarez/Projects/glyphbox/build/CMakeFiles/edit_cache.dir
-/Users/jarodalvarez/Projects/glyphbox/build/CMakeFiles/rebuild_cache.dir
