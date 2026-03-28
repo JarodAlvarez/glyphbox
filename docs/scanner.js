@@ -135,53 +135,27 @@ const GlyphboxScanner = (() => {
   }
 
   /* ── Camera / decode loop ─────────────────────────────────────────────── */
-  async function openCamera() {
-    const constraints = {
-      video: {
-        facingMode: { ideal: "environment" },
-        width:  { ideal: 1280 },
-        height: { ideal: 720 }
-      }
-    };
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = stream;
-    await video.play();
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
+  let attemptCount = 0;
+
+  function onDecodeResult(result, err) {
+    if (result) {
+      handleResult(result.getText());
+      return;
+    }
+    /* NotFoundException fires every frame with no code — use it as heartbeat */
+    if (err && !(err instanceof ZXing.NotFoundException)) {
+      console.warn("GLYPHBOX ZXing error:", err);
+    }
+    attemptCount++;
+    if (chunks.size === 0 && attemptCount % 30 === 0) {
+      const need = totalChunks !== null ? totalChunks : "?";
+      setStatus(`Scanning… (${chunks.size} / ${need} cards)  attempt ${attemptCount}`);
+    }
   }
 
   function stopStream() {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    if (reader) reader.reset();   /* stops camera + internal decode loop */
     scanning = false;
-  }
-
-  let attemptCount = 0;
-
-  function decodeFrame() {
-    if (!scanning) return;
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      attemptCount++;
-      try {
-        const lum    = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-        const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-        const result = reader.decode(bitmap);
-        if (result) handleResult(result.getText());
-      } catch (e) {
-        /* NotFoundException is normal — no code in frame */
-        if (e && e.name !== "NotFoundException") {
-          console.warn("GLYPHBOX ZXing error:", e);
-        }
-        /* Update status every ~30 frames so user knows scanning is active */
-        if (chunks.size === 0 && attemptCount % 30 === 0) {
-          const have = chunks.size;
-          const need = totalChunks !== null ? totalChunks : "?";
-          setStatus(`Scanning… (${have} / ${need} cards) attempt ${attemptCount}`);
-        }
-      }
-    }
-    rafId = requestAnimationFrame(decodeFrame);
   }
 
   /* ── Progress UI ──────────────────────────────────────────────────────── */
@@ -232,11 +206,12 @@ const GlyphboxScanner = (() => {
       console.error("GLYPHBOX: ZXing not loaded — scanning disabled");
       return;
     }
-    const hints = new ZXing.DecodingHintDictionary();
+    /* Hints must be a plain Map — DecodingHintDictionary does not exist */
+    const hints = new Map();
     hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.AZTEC]);
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    reader = new ZXing.MultiFormatReader();
-    reader.setHints(hints);
+    /* BrowserMultiFormatReader handles getUserMedia + frame grabbing internally */
+    reader = new ZXing.BrowserMultiFormatReader(hints);
   }
 
   function init() {
@@ -275,16 +250,24 @@ const GlyphboxScanner = (() => {
     resetState();
     showOverlay();
 
+    const constraints = {
+      video: {
+        facingMode: { ideal: "environment" },
+        width:      { ideal: 1280 },
+        height:     { ideal: 720 }
+      }
+    };
+
     try {
-      await openCamera();
+      /* decodeFromConstraints opens the camera and calls onDecodeResult
+         continuously until reader.reset() is called.                    */
+      scanning = true;
+      await reader.decodeFromConstraints(constraints, video, onDecodeResult);
     } catch (err) {
+      scanning = false;
       setStatus("⚠ Camera error: " + err.message);
       console.error("GLYPHBOX camera error:", err);
-      return;
     }
-
-    scanning = true;
-    decodeFrame();
   }
 
   function stop() {
