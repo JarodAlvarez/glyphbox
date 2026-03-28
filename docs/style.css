@@ -1,0 +1,348 @@
+/* ── GLYPHBOX Web Emulator — Mobile-First Stylesheet ─────────────────────── */
+
+:root {
+  --bg:        #0a0a0a;
+  --fg:        #e8e8e8;
+  --accent:    #3ef57a;   /* phosphor green */
+  --border:    #2a2a2a;
+  --panel:     #141414;
+  --danger:    #f54e3e;
+  --font-ui:   "SF Mono", "Fira Mono", "Consolas", monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+#gb-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+}
+
+/* ── Header bar ─────────────────────────────────────────────────────────── */
+#gb-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+#gb-wordmark {
+  font-size: 13px;
+  letter-spacing: 0.25em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+#gb-tagline {
+  font-size: 10px;
+  color: #555;
+  letter-spacing: 0.1em;
+}
+
+/* ── Canvas container ───────────────────────────────────────────────────── */
+#gb-canvas-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  padding: 12px;
+}
+
+/* The SDL2 canvas injected by Emscripten */
+#canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  width:  min(100%, min(100vw - 24px, 100vh - 140px));
+  height: min(100%, min(100vw - 24px, 100vh - 140px));
+  aspect-ratio: 1 / 1;
+  border: 2px solid var(--border);
+  background: #000;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+/* ── Footer controls ────────────────────────────────────────────────────── */
+#gb-footer {
+  width: 100%;
+  padding: 10px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.gb-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gb-btn:active, .gb-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.gb-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+/* Floating scan button — visible only on web, shown after eject */
+#gb-scan-btn {
+  display: flex;   /* shown by default — GlyphboxScanner.showScanButton() re-shows it */
+}
+
+/* ── Scanner overlay ────────────────────────────────────────────────────── */
+#gb-scanner-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.93);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+#gb-scanner-header {
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#gb-scanner-title {
+  font-size: 12px;
+  letter-spacing: 0.25em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+#gb-scanner-close {
+  background: none;
+  border: 1px solid #444;
+  border-radius: 5px;
+  color: #aaa;
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 11px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+#gb-scanner-close:hover, #gb-scanner-close:active {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Live viewfinder */
+#gb-viewfinder {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 4 / 3;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+#gb-scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Off-screen canvas used for ZXing decode — hidden */
+#gb-scanner-canvas {
+  display: none;
+}
+
+/* Corner bracket decorations */
+#gb-viewfinder::before,
+#gb-viewfinder::after {
+  content: "";
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-color: var(--accent);
+  border-style: solid;
+  border-width: 0;
+  z-index: 2;
+}
+
+#gb-viewfinder::before {
+  top: 8px; left: 8px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+}
+
+#gb-viewfinder::after {
+  bottom: 8px; right: 8px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+}
+
+/* Scan line sweep animation */
+#gb-scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+  animation: gb-sweep 2.2s ease-in-out infinite;
+  z-index: 3;
+  opacity: 0.85;
+}
+
+@keyframes gb-sweep {
+  0%   { top: 5%; opacity: 0; }
+  10%  { opacity: 0.85; }
+  90%  { opacity: 0.85; }
+  100% { top: 92%; opacity: 0; }
+}
+
+/* ── Status text ─────────────────────────────────────────────────────────── */
+#gb-scanner-status {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #aaa;
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+/* Card progress pills */
+#gb-chunk-progress {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.gb-chunk-pill {
+  width: 32px;
+  height: 8px;
+  border-radius: 4px;
+  background: #2a2a2a;
+  transition: background 0.3s;
+}
+
+.gb-chunk-pill.done {
+  background: var(--accent);
+}
+
+/* ── Instructions ────────────────────────────────────────────────────────── */
+#gb-scan-instructions {
+  font-size: 10px;
+  color: #555;
+  text-align: center;
+  letter-spacing: 0.05em;
+  line-height: 1.7;
+  max-width: 360px;
+}
+
+/* ── Responsive: desktop gets bigger canvas ──────────────────────────────── */
+@media (min-width: 600px) {
+  #gb-canvas-wrap {
+    padding: 20px;
+  }
+
+  #canvas {
+    width:  min(480px, min(100vw - 40px, 100vh - 160px));
+    height: min(480px, min(100vw - 40px, 100vh - 160px));
+  }
+
+  #gb-wordmark  { font-size: 14px; }
+  .gb-btn       { font-size: 12px; padding: 10px 22px; }
+}
+
+/* ── Loading spinner shown while WASM initialises ────────────────────────── */
+#gb-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  transition: opacity 0.4s;
+}
+
+#gb-loading.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#gb-loading-word {
+  font-size: 16px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+}
+
+#gb-loading-bar-wrap {
+  width: 160px;
+  height: 4px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#gb-loading-bar {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.2s;
+  border-radius: 2px;
+}
+
+#gb-loading-msg {
+  font-size: 10px;
+  color: #555;
+  letter-spacing: 0.1em;
+}
