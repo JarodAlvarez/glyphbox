@@ -1,0 +1,28 @@
+# Build output
+build/
+build-web/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Generated PDFs (regenerate from tools)
+*.pdf
+hello.pdf
+pac.pdf
+
+# Compiled binary
+glyphbox
+
+# Claude local settings (keep .claude/settings.local.json out of repo)
+.claude/settings.local.json

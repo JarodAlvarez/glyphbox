@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>GLYPHBOX</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Loading screen (shown while WASM downloads & compiles) ──────────── -->
+<div id="gb-loading" role="status" aria-live="polite">
+  <div id="gb-loading-word">GLYPHBOX</div>
+  <div id="gb-loading-bar-wrap">
+    <div id="gb-loading-bar"></div>
+  </div>
+  <div id="gb-loading-msg">Loading runtime…</div>
+</div>
+
+<!-- ── Main shell ────────────────────────────────────────────────────────── -->
+<div id="gb-shell" aria-label="GLYPHBOX emulator">
+
+  <!-- Header -->
+  <header id="gb-header">
+    <span id="gb-wordmark">GLYPHBOX</span>
+    <span id="gb-tagline">fantasy console · web edition</span>
+  </header>
+
+  <!-- SDL2 canvas -->
+  <div id="gb-canvas-wrap">
+    <canvas id="canvas" tabindex="0"
+            oncontextmenu="event.preventDefault()"
+            aria-label="GLYPHBOX display"></canvas>
+  </div>
+
+  <!-- Footer controls -->
+  <footer id="gb-footer">
+    <!-- Scan FAB -->
+    <button id="gb-scan-btn" class="gb-btn" aria-label="Scan card">
+      <!-- camera icon -->
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 3L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0
+                 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15
+                 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
+        <circle cx="12" cy="13" r="3"/>
+      </svg>
+      SCAN CARD
+    </button>
+  </footer>
+
+</div><!-- #gb-shell -->
+
+<!-- ── Scanner overlay ──────────────────────────────────────────────────── -->
+<div id="gb-scanner-overlay"
+     role="dialog"
+     aria-modal="true"
+     aria-label="Card scanner"
+     aria-hidden="true">
+
+  <div id="gb-scanner-header">
+    <span id="gb-scanner-title">Scan Cart Card</span>
+    <button id="gb-scanner-close" aria-label="Cancel scan">CANCEL</button>
+  </div>
+
+  <!-- Live camera viewfinder -->
+  <div id="gb-viewfinder" aria-hidden="true">
+    <video id="gb-scanner-video"
+           autoplay muted playsinline
+           aria-label="Camera feed"></video>
+    <div id="gb-scan-line" aria-hidden="true"></div>
+  </div>
+
+  <!-- Off-screen decode canvas (hidden) -->
+  <canvas id="gb-scanner-canvas" aria-hidden="true"></canvas>
+
+  <!-- Card progress indicator -->
+  <div id="gb-chunk-progress" role="list" aria-label="Cards scanned"></div>
+
+  <!-- Status message -->
+  <p id="gb-scanner-status">Point camera at the back of the card…</p>
+
+  <!-- Instructions -->
+  <p id="gb-scan-instructions">
+    Hold the printed card rear-face up under good light.<br>
+    Scan one card at a time — the app collects all chunks automatically.
+  </p>
+
+</div><!-- #gb-scanner-overlay -->
+
+<!-- ── pako (zlib inflate — matches zlib.compress used by qr-encode.py) ── -->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+
+<!-- ── ZXing (loaded synchronously so scanner.js can reference it) ─────── -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+
+<!-- ── Scanner logic ─────────────────────────────────────────────────────── -->
+<script src="scanner.js"></script>
+
+<!-- ── Emscripten runtime hooks ─────────────────────────────────────────── -->
+<script>
+// Hooks consumed by the generated glyphbox.js
+var Module = {
+  canvas: (function() { return document.getElementById("canvas"); })(),
+
+  /* Progress callback: map 0-100 → loading bar */
+  setStatus: function(text) {
+    var msg = document.getElementById("gb-loading-msg");
+    var bar = document.getElementById("gb-loading-bar");
+    if (!text && Module.setStatus.last !== text) {
+      /* Empty string = done loading */
+      var el = document.getElementById("gb-loading");
+      el.classList.add("hidden");
+      setTimeout(function() { el.style.display = "none"; }, 420);
+    }
+    if (msg) msg.textContent = text || "Ready.";
+
+    /* Parse "n/m" progress from Emscripten status string */
+    var m = text.match(/\((\d+)\/(\d+)\)/);
+    if (m && bar) {
+      bar.style.width = ((parseInt(m[1]) / parseInt(m[2])) * 100) + "%";
+    }
+    Module.setStatus.last = text;
+  },
+
+  totalDependencies: 0,
+  monitorRunDependencies: function(left) {
+    this.totalDependencies = Math.max(this.totalDependencies, left);
+    Module.setStatus(left
+      ? "Preparing… (" + (this.totalDependencies - left)
+        + "/" + this.totalDependencies + ")"
+      : "");
+  },
+
+  onRuntimeInitialized: function() {
+    /* Canvas is ready — make sure keyboard events reach it */
+    var c = document.getElementById("canvas");
+    if (c) c.focus();
+    Module.setStatus("");
+  }
+};
+
+window.onerror = function(msg, url, line, col, err) {
+  Module.setStatus("Runtime error: " + msg);
+};
+</script>
+
+<!-- ── Generated Emscripten JS (injected by emcc) ───────────────────────── -->
+{{{ SCRIPT }}}
+
+</body>
+</html>
