@@ -156,11 +156,13 @@ const GlyphboxScanner = (() => {
     scanning = false;
   }
 
+  let attemptCount = 0;
+
   function decodeFrame() {
     if (!scanning) return;
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      attemptCount++;
       try {
         const lum    = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
         const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
@@ -170,6 +172,12 @@ const GlyphboxScanner = (() => {
         /* NotFoundException is normal — no code in frame */
         if (e && e.name !== "NotFoundException") {
           console.warn("GLYPHBOX ZXing error:", e);
+        }
+        /* Update status every ~30 frames so user knows scanning is active */
+        if (chunks.size === 0 && attemptCount % 30 === 0) {
+          const have = chunks.size;
+          const need = totalChunks !== null ? totalChunks : "?";
+          setStatus(`Scanning… (${have} / ${need} cards) attempt ${attemptCount}`);
         }
       }
     }
@@ -212,7 +220,8 @@ const GlyphboxScanner = (() => {
 
   function resetState() {
     chunks.clear();
-    totalChunks = null;
+    totalChunks  = null;
+    attemptCount = 0;
     if (progressEl) progressEl.innerHTML = "";
     setStatus("Point camera at the back of the card…");
   }
