@@ -35,7 +35,7 @@
 #define WIN_H 512
 
 /* ── Console state machine ───────────────────────────────────────────────── */
-typedef enum { STATE_SPLASH, STATE_SCANNING, STATE_CART_LOADED, STATE_RUNNING } ConsoleState;
+typedef enum { STATE_STARTUP, STATE_SPLASH, STATE_SCANNING, STATE_CART_LOADED, STATE_RUNNING } ConsoleState;
 
 static SDL_Window   *window       = NULL;
 static SDL_Renderer *sdl_renderer = NULL;
@@ -45,7 +45,8 @@ static int           splash_hold  = 0;
 
 /* Shared across native and web paths */
 static Cart         *g_cart       = NULL;
-static ConsoleState  g_state      = STATE_SPLASH;
+static ConsoleState  g_state      = STATE_STARTUP;
+static int           startup_frame = 0;
 
 /* ── Native-only: subprocess scanning & FIFO camera preview ─────────────── */
 #ifndef PLATFORM_WEB
@@ -237,17 +238,73 @@ void web_load_cart(const uint8_t *data, int len) {
 #endif
 
 /* ── Screen drawing ──────────────────────────────────────────────────────── */
+
+/* Dreamcast-style boot animation: logo elements reveal in sync with the
+   ascending startup chime.  Frame offsets match STARTUP_SEQ note boundaries:
+     f < 6:  black screen (bass hit plays)
+     f >= 6:  outer ring  (C4 note)
+     f >= 11: inner ring  (G4 note)
+     f >= 16: centre square (C5 note)
+     f >= 21: dot row     (E5 note)
+     f >= 26: wordmark    (G5 held) + 2-frame flash   */
+static void draw_startup(int f) {
+    renderer_cls(0);
+
+    if (f >= 6) {
+        renderer_rectf(44, 28, 40, 40, 1);   /* outer ring fill */
+        renderer_rectf(48, 32, 32, 32, 0);   /* outer ring cutout */
+    }
+    if (f >= 11) {
+        renderer_rectf(52, 36, 24, 24, 1);   /* inner ring fill */
+        renderer_rectf(56, 40, 16, 16, 0);   /* inner ring cutout */
+    }
+    if (f >= 16)
+        renderer_rectf(60, 44,  8,  8, 1);   /* centre square */
+
+    if (f >= 21)
+        for (int i = 0; i < 5; i++)
+            renderer_rectf(48 + i * 7, 74, 4, 4, 1);  /* dot row */
+
+    if (f >= 26)
+        renderer_print("GLYPHBOX", 40, 82, 1);
+
+    /* 2-frame white flash the moment the wordmark appears */
+    if (f == 26 || f == 27)
+        renderer_invert();
+}
+
 static void draw_splash(void) {
     renderer_cls(0);
-    renderer_print("GLYPHBOX", 40, 50, 1);
+
+    /* ── Logo: 2 rings + centre square, centred at (64, 48) ───────────────
+     * Both rings 4px thick.  Gap between rings: 4px.  Gap to centre: 4px.
+     * Centre: 8×8 solid.  Total icon: 40×40px.
+     * Each ring = rectf fill (colour 1) + rectf cutout (colour 0).          */
+    renderer_rectf(44, 28, 40, 40, 1);   /* outer ring fill  (40×40)        */
+    renderer_rectf(48, 32, 32, 32, 0);   /* outer ring cutout — 4px ring    */
+    renderer_rectf(52, 36, 24, 24, 1);   /* inner ring fill  (24×24)        */
+    renderer_rectf(56, 40, 16, 16, 0);   /* inner ring cutout — 4px ring    */
+    renderer_rectf(60, 44,  8,  8, 1);   /* centre square    ( 8×8 solid)   */
+
+    /* ── Dot separator: 5 × 4px dots, aligned with outer ring inner edge ── */
+    /* Outer ring cutout spans x=48..79 (32px). 5 dots × 4px + 4 gaps × 3px = 32px. */
+    for (int i = 0; i < 5; i++)
+        renderer_rectf(48 + i * 7, 74, 4, 4, 1);
+
+    /* ── Wordmark ── */
+    renderer_print("GLYPHBOX", 40, 82, 1);
+
+    /* ── Prompt ── */
 #ifdef PLATFORM_WEB
-    renderer_print("TAP TO SCAN CARD", 8, 66, 1);
+    renderer_print("TAP TO SCAN CARD", 16, 96, 1);
 #else
-    renderer_print("INSERT CARTRIDGE", 8, 66, 1);
+    //renderer_print("INSERT CARTRIDGE", 16, 96, 1);
 #endif
     if ((frame_counter % 30) >= 15)
-        renderer_print("A: SCAN CARD", 24, 78, 1);
-    renderer_print("(C) Gureedo 2026", 16, 105, 1);
+        renderer_print("A: SCAN CARD", 28, 108, 1);
+
+    /* ── Copyright ── */
+    renderer_print("(C) Gureedo 2026", 16, 118, 1);
 }
 
 static void draw_cart_loaded(Cart *c) {
@@ -294,7 +351,9 @@ static void game_loop_tick(void) {
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
         if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
-            if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
+            if (g_state == STATE_STARTUP) {
+                g_state = STATE_SPLASH;
+            } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
                 audio_music(-1);
                 cart_free(g_cart); g_cart = NULL;
                 lua_api_unload();
@@ -312,7 +371,16 @@ static void game_loop_tick(void) {
     input_update();
 
     /* ── State machine ── */
-    if (g_state == STATE_SPLASH) {
+    if (g_state == STATE_STARTUP) {
+        if (startup_frame == 0) audio_startup_play();
+        draw_startup(startup_frame);
+        startup_frame++;
+        /* Transition to splash once chime finishes (and we've played at least
+           30 frames so the logo is fully visible before cutting away)        */
+        if (!audio_startup_active() && startup_frame > 30)
+            g_state = STATE_SPLASH;
+    }
+    else if (g_state == STATE_SPLASH) {
         draw_splash();
         if (input_btnp(BTN_A)) {
             start_webcam_scan();
@@ -454,9 +522,12 @@ int main(int argc, char *argv[]) {
     lua_api_init();
 
     if (cart_path) {
+        /* Direct cart load — skip startup animation */
         g_cart = load_cart(cart_path);
         if (g_cart) { audio_jingle_play(); g_state = STATE_CART_LOADED; }
+        else g_state = STATE_SPLASH;
     }
+    /* else: g_state stays STATE_STARTUP; chime plays on first tick */
 
     last_tick = SDL_GetTicks();
 

@@ -51,6 +51,24 @@ static Channel jingle_ch;
 static int     jingle_note_idx  = -1;  /* -1 = inactive */
 static int     jingle_frame_ctr = 0;
 
+/* ── System startup chime ──────────────────────────────────────────────────── */
+/* Ascending chime played once at boot during the logo animation.
+   Shares the dedicated jingle channel (mutually exclusive with jingle).      */
+static const JNote STARTUP_SEQ[] = {
+    { 130.81f,  5, 6 },  /* C3 bass hit  — black screen  (f=0)  */
+    { 0.0f,     1, 0 },  /* rest         — flash gap     (f=5)  */
+    { 261.63f,  5, 6 },  /* C4           — outer ring    (f=6)  */
+    { 392.00f,  5, 7 },  /* G4           — inner ring    (f=11) */
+    { 523.25f,  5, 7 },  /* C5           — centre dot    (f=16) */
+    { 659.25f,  5, 7 },  /* E5           — dots row      (f=21) */
+    { 783.99f, 18, 7 },  /* G5 held      — wordmark      (f=26) */
+    { 523.25f,  6, 4 },  /* C5 resolve   — fade out      (f=44) */
+};
+#define STARTUP_LEN (int)(sizeof(STARTUP_SEQ) / sizeof(STARTUP_SEQ[0]))
+
+static int startup_note_idx  = -1;
+static int startup_frame_ctr = 0;
+
 static SfxPattern    sfx_patterns[16];
 static MusicPattern  music_patterns[4];
 
@@ -146,9 +164,8 @@ static void audio_callback(void *userdata, uint8_t *stream, int len) {
 
 /* ── Public API ───────────────────────────────────────────────────────────── */
 
-/* Load note at JINGLE_SEQ[idx] into jingle_ch (call with audio device locked). */
-static void _jingle_load(int idx) {
-    const JNote *n = &JINGLE_SEQ[idx];
+/* Load a JNote into jingle_ch (shared by jingle and startup; call unlocked). */
+static void _load_jnote(const JNote *n) {
     SDL_LockAudioDevice(audio_device_id);
     memset(&jingle_ch, 0, sizeof(jingle_ch));
     if (n->freq > 0.0f) {
@@ -164,7 +181,11 @@ static void _jingle_load(int idx) {
     SDL_UnlockAudioDevice(audio_device_id);
 }
 
+static void _jingle_load(int idx)  { _load_jnote(&JINGLE_SEQ[idx]);  }
+static void _startup_load(int idx) { _load_jnote(&STARTUP_SEQ[idx]); }
+
 void audio_jingle_play(void) {
+    startup_note_idx = -1;   /* cancel startup if still running */
     jingle_note_idx  = 0;
     jingle_frame_ctr = 0;
     _jingle_load(0);
@@ -172,6 +193,16 @@ void audio_jingle_play(void) {
 
 int audio_jingle_active(void) {
     return jingle_note_idx >= 0;
+}
+
+void audio_startup_play(void) {
+    startup_note_idx  = 0;
+    startup_frame_ctr = 0;
+    _startup_load(0);
+}
+
+int audio_startup_active(void) {
+    return startup_note_idx >= 0;
 }
 
 void audio_init(void) {
@@ -251,6 +282,23 @@ void audio_music(int id) {
 }
 
 void audio_frame_tick(void) {
+    /* Advance startup chime sequencer */
+    if (startup_note_idx >= 0) {
+        startup_frame_ctr++;
+        if (startup_frame_ctr >= STARTUP_SEQ[startup_note_idx].dur) {
+            startup_note_idx++;
+            startup_frame_ctr = 0;
+            if (startup_note_idx >= STARTUP_LEN) {
+                startup_note_idx = -1;
+                SDL_LockAudioDevice(audio_device_id);
+                jingle_ch.note = 0;
+                SDL_UnlockAudioDevice(audio_device_id);
+            } else {
+                _startup_load(startup_note_idx);
+            }
+        }
+    }
+
     /* Advance jingle note sequencer (runs independently of cart music) */
     if (jingle_note_idx >= 0) {
         jingle_frame_ctr++;

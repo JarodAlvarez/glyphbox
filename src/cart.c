@@ -32,8 +32,10 @@ static void get_save_path(Cart *cart, int slot, char *out, size_t n) {
     const char *home = getenv("HOME");
     if (!home) home = ".";
     char dir[512];
+    char base[512];
+    snprintf(base, sizeof(base), "%s/.glyphbox", home);
+    mkdir(base, 0700);
     snprintf(dir, sizeof(dir), "%s/.glyphbox/saves", home);
-    /* create directory if needed */
     mkdir(dir, 0700);
     snprintf(out, n, "%s/%08X_%d.bin", dir, cart->crc32, slot);
 }

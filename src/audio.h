@@ -19,4 +19,9 @@ void audio_set_music_data(const uint8_t *data, size_t len);
 void audio_jingle_play(void);
 int  audio_jingle_active(void);
 
+/* Startup chime — plays once at boot during the logo animation.
+   Uses the same dedicated channel as the jingle (mutually exclusive). */
+void audio_startup_play(void);
+int  audio_startup_active(void);
+
 #endif /* GLYPHBOX_AUDIO_H */
