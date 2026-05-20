@@ -16,7 +16,8 @@ local P={
 
 local bd,pid,gx,gy,gr,nid
 local sc,lv,lns,sp,tm,go
-local arows,aset,at  -- line-clear animation state
+local arows,aset,at
+local phase,dropping,ty
 
 local function blks(id,r)
   local t=P[id][((r-1)%#P[id])+1]
@@ -69,12 +70,19 @@ local function lock()
   if #arows==0 then do_clear() end
 end
 
-function _init()
+local function start_game()
   bd={}
   for y=1,H do bd[y]=nrow() end
   sc,lv,lns,sp,tm,go=0,0,0,30,0,false
   arows,aset,at={},{},0
+  dropping,ty=false,0
   nid=rnd(7)+1; spawn(rnd(7)+1)
+  phase=1
+end
+
+function _init()
+  phase=0
+  arows,aset={},{}
 end
 
 local dr={}
@@ -88,13 +96,21 @@ local function held(b)
 end
 
 function _update()
-  if go then if btnp(BTN_A) then _init() end; return end
+  if phase==0 then if btnp(BTN_A) then start_game() end; return end
+  if go then if btnp(BTN_A) then start_game() end; return end
   if #arows>0 then at=at+1; if at>=ADUR then do_clear() end; return end
+  if dropping then
+    for _=1,2 do if gy<ty then gy=gy+1 end end
+    if gy>=ty then dropping=false; lock() end
+    return
+  end
   if held(BTN_L) and fit(pid,gx-1,gy,gr) then gx=gx-1 end
   if held(BTN_R) and fit(pid,gx+1,gy,gr) then gx=gx+1 end
   if btnp(BTN_U) then
-    while fit(pid,gx,gy+1,gr) do gy=gy+1 end
-    lock(); tm=0; return
+    ty=gy
+    while fit(pid,gx,ty+1,gr) do ty=ty+1 end
+    if ty>gy then dropping=true else lock() end
+    return
   end
   if btnp(BTN_A) then
     local nr=gr%#P[pid]+1
@@ -115,9 +131,19 @@ end
 
 function _draw()
   cls(0)
+  if phase==0 then
+    rectf(14,30,100,14,1)
+    print("TETRIS",46,33,0)
+    rectf(61,53,6,6,1)
+    rectf(54,60,6,6,1); rectf(61,60,6,6,1); rectf(68,60,6,6,1)
+    if frame()%40<28 then print("A: START",40,90,1) end
+    print("(C) GUREEDO",31,118,1)
+    return
+  end
   rect(OX-1,OY-1,W*SZ+2,H*SZ+2,1)
   for y=1,H do for x=1,W do
-    local v=aset[y] and (at%4<2 and 1 or 0) or bd[y][x]
+    local v=bd[y][x]
+    if aset[y] then v=at%4<2 and 1 or 0 end
     if v~=0 then
       local px,py=cell(x,y); rectf(px,py,SZ-1,SZ-1,1)
     end
