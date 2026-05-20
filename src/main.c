@@ -31,8 +31,8 @@
 #  include <sys/stat.h>   /* mkfifo */
 #endif
 
-#define WIN_W 512
-#define WIN_H 512
+#define WIN_W 480  /* OSOYOO 3.5" physical display */
+#define WIN_H 320
 
 /* ── Console state machine ───────────────────────────────────────────────── */
 typedef enum { STATE_STARTUP, STATE_SPLASH, STATE_SCANNING, STATE_CART_LOADED, STATE_RUNNING } ConsoleState;
