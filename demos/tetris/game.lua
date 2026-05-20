@@ -100,7 +100,7 @@ function _update()
   if go then if btnp(BTN_A) then start_game() end; return end
   if #arows>0 then at=at+1; if at>=ADUR then do_clear() end; return end
   if dropping then
-    for _=1,2 do if gy<ty then gy=gy+1 end end
+    for _=1,4 do if gy<ty then gy=gy+1 end end
     if gy>=ty then dropping=false; lock() end
     return
   end
