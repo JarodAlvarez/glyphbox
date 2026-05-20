@@ -24,7 +24,6 @@ static uint16_t tilemap[16 * 16];
 void renderer_init(SDL_Renderer *r) {
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");  /* must precede texture creation */
     sdl_renderer = r;
-    SDL_RenderSetLogicalSize(r, FB_W, FB_H);          /* lock viewport to 128×128; SDL2 letterboxes */
     fb_texture = SDL_CreateTexture(r,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
@@ -47,7 +46,13 @@ void renderer_frame(void) {
         }
     }
     SDL_UnlockTexture(fb_texture);
-    SDL_RenderCopy(sdl_renderer, fb_texture, NULL, NULL);
+    int win_w, win_h;
+    SDL_GetRendererOutputSize(sdl_renderer, &win_w, &win_h);
+    int out_h = win_h;
+    int out_w = (out_h * 4) / 3;
+    if (out_w > win_w) { out_w = win_w; out_h = (out_w * 3) / 4; }
+    SDL_Rect dst = { (win_w - out_w) / 2, (win_h - out_h) / 2, out_w, out_h };
+    SDL_RenderCopy(sdl_renderer, fb_texture, NULL, &dst);
 }
 
 void renderer_cls(int c) {

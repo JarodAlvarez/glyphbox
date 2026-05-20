@@ -513,8 +513,6 @@ int main(int argc, char *argv[]) {
         SDL_DestroyWindow(window); SDL_Quit(); return 1;
     }
 
-    SDL_RenderSetLogicalSize(sdl_renderer, 128, 128);
-
     runtime_init();
     renderer_init(sdl_renderer);
     audio_init();
