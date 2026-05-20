@@ -45,7 +45,8 @@ end
 
 local function do_clear()
   local n=#arows
-  for i=n,1,-1 do table.remove(bd,arows[i]); table.insert(bd,1,nrow()) end
+  for i=n,1,-1 do table.remove(bd,arows[i]) end
+  for i=1,n do table.insert(bd,1,nrow()) end
   lns=lns+n
   sc=sc+LPTS[n+1]*(lv+1)
   lv=flr(sc/500)
