@@ -48,9 +48,16 @@ void renderer_frame(void) {
     SDL_UnlockTexture(fb_texture);
     int win_w, win_h;
     SDL_GetRendererOutputSize(sdl_renderer, &win_w, &win_h);
+#ifdef PLATFORM_PI_HDMI
+    /* 4:3 output to compensate for the OSOYOO display's internal scaler */
     int out_h = win_h;
     int out_w = (out_h * 4) / 3;
     if (out_w > win_w) { out_w = win_w; out_h = (out_w * 3) / 4; }
+#else
+    /* Square output — game renders to 128×128 */
+    int out_h = win_h < win_w ? win_h : win_w;
+    int out_w = out_h;
+#endif
     SDL_Rect dst = { (win_w - out_w) / 2, (win_h - out_h) / 2, out_w, out_h };
     SDL_RenderCopy(sdl_renderer, fb_texture, NULL, &dst);
 }
