@@ -1,6 +1,6 @@
 local W,H,SZ=10,20,6
 local OX,OY=3,4
-local LPTS={0,10,30,60,100}
+local LPTS={0,40,100,300,1200}
 local ADUR=20
 
 -- piece rotations: P[id][rot] = flat {x1,y1,x2,y2,x3,y3,x4,y4}
@@ -50,7 +50,7 @@ local function do_clear()
   for i=1,n do table.insert(bd,1,nrow()) end
   lns=lns+n
   sc=sc+LPTS[n+1]*(lv+1)
-  lv=flr(sc/500)
+  lv=flr(lns/10)
   sp=mid(4,30-lv*3,30)
   arows,aset={},{}
   spawn(nid); nid=rnd(7)+1
