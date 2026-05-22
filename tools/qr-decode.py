@@ -221,13 +221,24 @@ def _scan_for_halves(pil_img, camera_mode: bool = False) -> dict:
     if _is_complete(halves):
         return halves
 
-    # Pass 2 — hard-threshold fallback (fixes anti-aliased PDF/screen renders)
-    bw = pil_img.convert("L").point(lambda v: 0 if v < 128 else 255, "1").convert("RGB")
-    _extract(bw)
-    if _is_complete(halves) or not camera_mode:
+    # Pass 2 — contrast-normalised multi-threshold sweep.
+    # A single fixed threshold (128) fails when auto-exposure or print ink
+    # density shifts the code's grey levels away from mid-grey.
+    # Stretching the histogram first (min→0, max→255) makes the sweep
+    # lighting-invariant; six thresholds cover virtually any exposure.
+    gray_l = pil_img.convert("L")
+    lo, hi = gray_l.getextrema()
+    if hi > lo:
+        gray_l = gray_l.point(lambda v: int((v - lo) * 255 // (hi - lo)))
+    for thresh in (80, 100, 120, 140, 160, 180):
+        bw = gray_l.point(lambda v, t=thresh: 0 if v < t else 255, "1").convert("RGB")
+        _extract(bw)
+        if _is_complete(halves):
+            return halves
+    if not camera_mode:
         return halves
 
-    # Passes 3–12: camera-specific preprocessing ──────────────────────────
+    # Passes 3–N: camera-specific preprocessing ───────────────────────────
     try:
         import cv2
         import numpy as np
@@ -237,18 +248,37 @@ def _scan_for_halves(pil_img, camera_mode: bool = False) -> dict:
         gray  = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         H, W  = gray.shape
 
-        clahe    = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-
         def _pil(g):
             return _Image.fromarray(cv2.cvtColor(g, cv2.COLOR_GRAY2RGB))
 
-        # Pass 3 — CLAHE full frame
+        # Pass 3 — unsharp mask: restores module edges blurred by in-progress
+        # AF or card held slightly out of plane.  Helps LocalAverage locate
+        # the finder-pattern corners on marginally-focused frames.
+        blurred   = cv2.GaussianBlur(gray, (0, 0), sigmaX=1.5)
+        sharpened = cv2.addWeighted(gray, 1.8, blurred, -0.8, 0)
+        _extract(_pil(sharpened))
+        if _is_complete(halves):
+            return halves
+
+        # Pass 4 — hard thresholds on sharpened + contrast-stretched image.
+        sh_lo, sh_hi = int(sharpened.min()), int(sharpened.max())
+        if sh_hi > sh_lo:
+            sh_norm = ((sharpened.astype(np.float32) - sh_lo)
+                       * 255 / (sh_hi - sh_lo)).astype(np.uint8)
+            for thresh in (100, 128, 160):
+                bw_arr = np.where(sh_norm >= thresh, np.uint8(255), np.uint8(0))
+                _extract(_pil(bw_arr))
+                if _is_complete(halves):
+                    return halves
+
+        # Pass 5 — CLAHE (local contrast normalisation) on original grey frame.
+        clahe    = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
         _extract(_pil(enhanced))
         if _is_complete(halves):
             return halves
 
-        # Pass 4 — adaptive threshold on CLAHE full frame
+        # Pass 6 — adaptive threshold on CLAHE frame.
         adaptive = cv2.adaptiveThreshold(
             enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 5
         )
@@ -369,14 +399,15 @@ def _open_picamera2() -> tuple:
     cam.start()
     _time.sleep(0.5)   # video mode converges AE/AWB faster than still mode
 
-    # Enable continuous autofocus (AfMode=2) on cameras that support it
-    # (e.g. Arducam 75D AF, Pi Camera Module 3 AF).  Without this the IMX708 AF
-    # stays at its default focus distance and the code appears blurry even
-    # though rpicam-hello looks sharp (it enables AF automatically).
-    # Non-AF cameras (fixed-focus) silently ignore these controls.
+    # Enable continuous autofocus and raise in-ISP sharpness.
+    # AfMode=2 + AfSpeed=1: continuous fast AF (AF cameras only; fixed-focus
+    # cameras silently ignore it).  Sharpness=2.0 sharpens module edges at
+    # the ISP level so every captured frame is crisper before we even look
+    # at it — helps the first pass succeed without needing the software
+    # sharpening fallback.
     try:
-        cam.set_controls({"AfMode": 2, "AfSpeed": 1})
-        _time.sleep(0.5)   # allow AF to converge before first capture
+        cam.set_controls({"AfMode": 2, "AfSpeed": 1, "Sharpness": 2.0})
+        _time.sleep(1.0)   # allow AF to converge before first capture
     except Exception:
         pass
 

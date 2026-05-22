@@ -112,57 +112,151 @@ def open_camera(device: int, width: int, height: int):
         return _open_opencv(device, width, height)
 
 
-# ── Aztec scanning (adapted from qr-decode.py) ────────────────────────────────
+# ── Aztec scanning ────────────────────────────────────────────────────────────
+
+_VALID_TOTALS = frozenset({1, 2, 4, 8, 16})
+
+
+def _is_complete(halves: dict) -> bool:
+    total = halves.get(-1, 0)
+    return total > 0 and all(i in halves for i in range(total))
+
 
 def scan_for_halves(pil_img) -> dict:
     """
-    Scan a PIL Image for GLYPHBOX Aztec codes.
+    Scan a PIL Image for GLYPHBOX Aztec codes (multi-card format).
 
-    Returns a dict:  half-index (0 or 1) → (flags_byte, payload_bytes)
+    Returns a dict:
+        -1      → total cards in set (sentinel)
+        0…N-1   → (flags_byte, chunk_data_bytes)
 
-    Uses the same two-pass binarisation strategy as qr-decode.py:
-      Pass 1 — zxing-cpp native LocalAverage binariser (good for live camera).
-      Pass 2 — Hard 128 threshold (fixes anti-aliased rendered/printed codes).
+    Payload per code (from qr-encode.py):
+        byte[0]  chunk index  (0…N-1)
+        byte[1]  total cards  (N)
+        byte[2]  flags        (0x01 = zlib-compressed)
+        byte[3+] chunk data
+
+    Five-pass pipeline matching qr-decode.py camera_mode:
+      Pass 1 — zxing-cpp native LocalAverage binariser.
+      Pass 2 — contrast-stretched multi-threshold sweep (80–180).
+      Pass 3 — unsharp mask sharpening + threshold sweep.
+      Pass 4 — CLAHE (local contrast normalisation).
+      Pass 5 — adaptive threshold on CLAHE image.
     """
     zxingcpp = _require("zxingcpp", "zxing-cpp")
     halves: dict = {}
 
-    def _extract(results) -> None:
-        for r in results:
-            if not r.valid or len(r.bytes) < 3:
+    # Build Aztec-only + try_harder hints once
+    import inspect
+    hints: dict = {}
+    try:
+        hints["formats"] = zxingcpp.BarcodeFormat.Aztec
+    except AttributeError:
+        pass
+    try:
+        sig = inspect.signature(zxingcpp.read_barcodes)
+        for key in ("try_rotate", "try_downscale", "try_invert"):
+            if key in sig.parameters:
+                hints[key] = True
+    except (TypeError, ValueError):
+        pass
+
+    def _extract(pil) -> None:
+        for r in zxingcpp.read_barcodes(pil, **hints):
+            if not r.valid or len(r.bytes) < 4:
                 continue
-            idx   = r.bytes[0]   # 0x00 = Code A, 0x01 = Code B
-            flags = r.bytes[1]   # 0x01 = zlib compressed
-            if idx in (0, 1) and idx not in halves:
-                halves[idx] = (flags, r.bytes[2:])
-                label = "A" if idx == 0 else "B"
-                log.info("  Code %s found: %d bytes", label, len(r.bytes[2:]))
+            if "aztec" not in str(r.format).lower():
+                continue
+            idx   = r.bytes[0]
+            total = r.bytes[1]
+            flags = r.bytes[2]
+            data  = r.bytes[3:]
+            if total not in _VALID_TOTALS or idx >= total:
+                continue
+            if -1 not in halves:
+                halves[-1] = total
+            if idx not in halves:
+                halves[idx] = (flags, data)
+                log.info("  Card %d/%d found: %d bytes", idx + 1, total, len(data))
 
-    _extract(zxingcpp.read_barcodes(pil_img))
+    # Pass 1 — native binariser
+    _extract(pil_img)
+    if _is_complete(halves):
+        return halves
 
-    if len(halves) < 2:
-        bw = pil_img.convert("L").point(lambda v: 0 if v < 128 else 255, "1").convert("RGB")
-        _extract(zxingcpp.read_barcodes(bw))
+    # Pass 2 — contrast-normalised multi-threshold sweep.
+    # Stretching min→0/max→255 first makes the sweep lighting-invariant.
+    gray_l = pil_img.convert("L")
+    lo, hi = gray_l.getextrema()
+    if hi > lo:
+        gray_l = gray_l.point(lambda v: int((v - lo) * 255 // (hi - lo)))
+    for thresh in (80, 100, 120, 140, 160, 180):
+        bw = gray_l.point(lambda v, t=thresh: 0 if v < t else 255, "1").convert("RGB")
+        _extract(bw)
+        if _is_complete(halves):
+            return halves
+
+    # Passes 3–5 — camera-specific preprocessing (requires cv2)
+    try:
+        import cv2
+        import numpy as np
+        from PIL import Image as _Image
+
+        frame = np.array(pil_img.convert("RGB"))
+        gray  = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+
+        def _pil(g):
+            return _Image.fromarray(cv2.cvtColor(g, cv2.COLOR_GRAY2RGB))
+
+        # Pass 3 — unsharp mask: restores module edges blurred by in-progress AF.
+        blurred   = cv2.GaussianBlur(gray, (0, 0), sigmaX=1.5)
+        sharpened = cv2.addWeighted(gray, 1.8, blurred, -0.8, 0)
+        _extract(_pil(sharpened))
+        if _is_complete(halves):
+            return halves
+        sh_lo, sh_hi = int(sharpened.min()), int(sharpened.max())
+        if sh_hi > sh_lo:
+            sh_norm = ((sharpened.astype(np.float32) - sh_lo)
+                       * 255 / (sh_hi - sh_lo)).astype(np.uint8)
+            for thresh in (100, 128, 160):
+                bw_arr = np.where(sh_norm >= thresh, np.uint8(255), np.uint8(0))
+                _extract(_pil(bw_arr))
+                if _is_complete(halves):
+                    return halves
+
+        # Pass 4 — CLAHE (local contrast normalisation).
+        clahe    = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        _extract(_pil(enhanced))
+        if _is_complete(halves):
+            return halves
+
+        # Pass 5 — adaptive threshold on CLAHE image.
+        adaptive = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 5
+        )
+        _extract(_pil(adaptive))
+
+    except Exception:
+        pass
 
     return halves
 
 
 def assemble_cart(halves: dict) -> Optional[bytes]:
-    """
-    Combine Code A + Code B into a raw .gbcart binary.
-    Returns None on decompression error or magic mismatch.
-    """
-    if 0 not in halves or 1 not in halves:
+    """Assemble all N chunks from halves into a raw .gbcart binary."""
+    total = halves.get(-1, 0)
+    if total == 0 or not all(i in halves for i in range(total)):
         return None
 
-    flags_a, data_a = halves[0]
-    _,       data_b = halves[1]
-    combined = data_a + data_b
+    flags    = halves[0][0]
+    raw_size = sum(len(halves[i][1]) for i in range(total))
+    combined = b"".join(halves[i][1] for i in range(total))
 
-    if flags_a & 0x01:
+    if flags & 0x01:
         try:
             combined = zlib.decompress(combined)
-            log.info("Decompressed: %d → %d bytes", len(data_a) + len(data_b), len(combined))
+            log.info("Decompressed: %d → %d bytes", raw_size, len(combined))
         except zlib.error as e:
             log.error("Decompression failed: %s", e)
             return None
@@ -244,12 +338,14 @@ def run_daemon(args: argparse.Namespace) -> None:
                 if idx not in halves:
                     halves[idx] = val
                     halves_last_update = now
-                    other = "B" if idx == 0 else "A"
-                    if (1 - idx) not in halves:
-                        label = "A" if idx == 0 else "B"
-                        log.info("Code %s captured — waiting for Code %s…", label, other)
+                    total = halves.get(-1, 0)
+                    if isinstance(idx, int) and idx >= 0 and total > 0:
+                        captured = sum(1 for k in halves if isinstance(k, int) and k >= 0)
+                        if captured < total:
+                            log.info("Card %d/%d scanned — %d remaining",
+                                     captured, total, total - captured)
 
-            if len(halves) == 2:
+            if _is_complete(halves):
                 cart_bytes = assemble_cart(halves)
                 halves = {}  # reset regardless of outcome
 
