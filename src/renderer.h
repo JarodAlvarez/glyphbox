@@ -20,6 +20,8 @@ void renderer_print(const char *str, int x, int y, int c);
 void renderer_invert(void);
 void renderer_set_sprites(const uint8_t *data);
 void renderer_set_tilemap(const uint8_t *data);
+void renderer_mset(int x, int y, int tile);
+int  renderer_mget(int x, int y);
 void renderer_debug_ascii(void);
 
 #endif /* GLYPHBOX_RENDERER_H */

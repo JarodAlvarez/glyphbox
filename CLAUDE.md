@@ -20,13 +20,25 @@ GLYPHBOX is a software-defined fantasy game console with physical cartridges. Ga
 | Display | 128 × 128 pixels, 1-bit monochrome (black=0, white=1) |
 | Input | D-pad (U/D/L/R) + 1 action button (BTN_A) |
 | Audio | 2 cart channels (square/triangle/noise) + 1 system jingle channel |
-| Token limit | 2,048 Lua tokens per cartridge (enforced by `tools/token-count.py`) |
 | Sprites | 8×8 tiles, 1-bit, 128 max per cartridge |
 | Tile map | 16×16 tile indices |
 | Cartridge format | `.gbcart` binary (magic `GBC1`) |
 | Scripting | LuaJIT / Lua 5.4, sandboxed |
 | Frame rate | 30 fps hard cap |
 | Host | C99 + SDL2 |
+
+### Game Size Limits
+
+The token count is **advisory only** — `tools/token-count.py` exits non-zero when over 2,048 tokens as a design-complexity signal, but `cart-builder.py` never calls it and the runtime has no concept of tokens. Games can and do exceed 2,048 tokens (Star Wars: 4,820 tokens).
+
+The real hard limit is **card count ≤ 8**. Every extra card a player must scan is UX friction; 8 is the practical ceiling for a good experience. Always check card count after building:
+
+```bash
+python3 tools/card-print.py cartridges/mygame.gbcart -o /dev/null
+# reports: "Cart: mygame.gbcart  (N cards)"
+```
+
+The underlying technical ceiling is 65,535 bytes of compressed bytecode (a uint16 range check in `cart-builder.py`) — far larger than any realistic game.
 
 ---
 
@@ -155,6 +167,8 @@ renderer_circ(x, y, r, c)          // 1px outline circle
 renderer_circf(x, y, r, c)         // filled circle
 renderer_spr(id, x, y, fx, fy)     // blit 8×8 sprite; fx/fy = flip booleans
 renderer_map(cx, cy, x, y, w, h)   // blit tile map region
+renderer_mset(x, y, tile)          // write tile index to in-memory tilemap (does not persist)
+renderer_mget(x, y)                // read tile index from in-memory tilemap → int
 renderer_print(str, x, y, c)       // 5×7 bitmap text
 renderer_invert()                   // XOR entire framebuffer (toggle black/white)
 ```
@@ -234,20 +248,48 @@ renderer_print("GLYPHBOX", 40, 82, 1);
 
 ## Cartridge Format (.gbcart)
 
+Two format versions exist. The builder uses **v0.4 compressed** by default; v0.2 legacy is only produced with `--no-compress`.
+
+### v0.4 Compressed (default)
+
+```
+Offset            Size       Content
+0x0000            4          Magic: GBC1 (0x47 0x42 0x43 0x31)
+0x0004            16         Title (null-padded, max 16 chars)
+0x0014            8          Author (null-padded, max 8 chars)
+0x001C            2          Version (uint16 LE)
+0x001E            2          Flags (uint16 LE) — bit 0x0002 set
+0x0020            2          stored_len: compressed bytecode size (uint16 LE)
+0x0022            2          raw_len: decompressed bytecode size (uint16 LE)
+0x0024            stored_len zlib-compressed LuaJIT bytecode
+0x0024+stored_len 1024       Sprite sheet (128 tiles × 8×8 × 1bpp)
+…+1024            512        Tile map (16×16 × uint16 LE tile indices)
+…+512             512        SFX patterns (16 × 32 bytes)
+…+512             256        Music patterns (4 × 64 bytes)
+EOF-4             4          CRC32 of all preceding bytes (uint32 LE)
+```
+
+Because the compressed bytecode is variable-length, **the sprite sheet and later sections do not have fixed offsets**. Do not assume `0x1020` for the sprite sheet.
+
+### v0.2 Legacy (--no-compress only)
+
 ```
 Offset   Size    Content
-0x0000   4       Magic: GBC1 (0x47 0x42 0x43 0x31)
-0x0004   16      Title (null-padded, max 16 chars)
-0x0014   8       Author (null-padded, max 8 chars)
+0x0000   4       Magic: GBC1
+0x0004   16      Title
+0x0014   8       Author
 0x001C   2       Version (uint16 LE)
-0x001E   2       Flags (uint16 LE) — bit 0x0002 = zlib-compressed bytecode
-0x0020   ≤4096   Lua bytecode (may be zlib-compressed per flag)
-0x1020   1024    Sprite sheet (128 tiles × 8×8 × 1bpp)
-0x1420   512     Tile map (16×16 × uint16 LE tile indices)
-0x1620   512     SFX patterns (16 × 32 bytes)
-0x1820   256     Music patterns (4 × 64 bytes)
-EOF-4    4       CRC32 of all preceding bytes (uint32 LE)
+0x001E   2       Flags (uint16 LE) — 0x0000
+0x0020   4       Bytecode length prefix (uint32 LE)
+0x0024   ≤4092   Raw LuaJIT bytecode (zero-padded to fill slot)
+0x1020   1024    Sprite sheet
+0x1420   512     Tile map
+0x1620   512     SFX patterns
+0x1820   256     Music patterns
+0x1920   4       CRC32
 ```
+
+This format enforces a hard 4,092-byte bytecode ceiling (checked in `cart-builder.py`). Fixed offsets apply only here.
 
 Save files: `~/.glyphbox/saves/<CRC32HEX>_<slot>.bin` (4 slots, 64 bytes each). Directories created automatically on first save.
 
@@ -259,7 +301,7 @@ Save files: `~/.glyphbox/saves/<CRC32HEX>_<slot>.bin` (4 slots, 64 bytes each). 
 # Build a cartridge from a demo directory
 python3 tools/cart-builder.py demos/bouncer/ -o cartridges/bouncer.gbcart
 
-# Check token count (must be ≤ 2048 — enforce before building)
+# Check token count (advisory — signals design complexity, not a hard limit)
 python3 tools/token-count.py demos/bouncer/game.lua
 
 # Generate print-ready card PDF (ISO ID-1 = 85.6×54mm = actual cut size ~7.5×5cm on printer)
@@ -292,6 +334,8 @@ circf(x, y, r, c)           -- filled
 spr(id, x, y)               -- blit sprite (no flip)
 spr(id, x, y, fx, fy)       -- blit sprite with flip
 map(cx, cy, x, y, w, h)     -- blit tile region
+mset(x, y, tile)            -- write tile index to tilemap (0–15 coords, runtime only)
+mget(x, y)                  -- read tile index from tilemap → integer
 print(s, x, y, c)           -- draw text (5×7 font)
 invert()                    -- flip entire framebuffer
 ```
@@ -333,6 +377,28 @@ frame()          -- frame counter (integer, 30fps)
 peek(addr)             -- read byte from cart ROM
 save(slot, data)       -- write string to save slot (0–3)
 load(slot)             -- read save slot → string or nil
+```
+
+**Expansion scanning** *(native/Pi only — no-op on PLATFORM_WEB)*
+```lua
+scan_begin()           -- start the camera scanner mid-game
+scan_poll()            -- nil = still scanning
+                       -- false = scan failed or no data captured
+                       -- table = expansion data, keyed by slot index
+                       --   e.g. result[1], result[2], result[3]
+```
+
+`scan_poll()` loads the scanned cart into a temporary sandboxed VM, runs its `_init()` with a mock `save()` interceptor, and returns whatever that `_init()` wrote to slots 0–3 as a Lua table. The running game is never interrupted — the game controls its own scanning UI.
+
+**Expansion cart contract** — an expansion cart is a normal `.gbcart` whose `_init()` only calls `save()` to write data payloads (≤ 64 bytes each, slots 0–3). When scanned mid-game via `scan_poll()`, only `_init()` executes; `_update()` and `_draw()` are ignored. When run standalone (scanned normally at the splash screen) the full game loop runs as usual, allowing the expansion cart to show a confirmation screen.
+
+```lua
+-- Minimal expansion cart _init():
+function _init()
+  save(1, "3"..HOLE_RLE_A)
+  save(2, "4"..HOLE_RLE_B)
+  save(3, "5"..HOLE_RLE_C)
+end
 ```
 
 **Game loop contract**
@@ -381,11 +447,12 @@ Three build targets, controlled by `#define`:
 | `dungeon.gbcart` | Top-down dungeon, D-pad, save/load |
 | `pac.gbcart` | Pac-Man style |
 | `tennis.gbcart` | Pong/tennis (~1398 tokens, 4 cards to print) |
-| `sw.gbcart` | Star Wars |
+| `sw.gbcart` | Star Wars (~4820 tokens, 8 cards to print — current ceiling) |
 | `bukobuko.gbcart` | RPS game |
 | `rpg.gbcart` | RPG |
 | `dk.gbcart` | Donkey Kong style |
 | `sta.gbcart` | Space shooter |
+| `putt.gbcart` | Golf — 4 holes, real ball physics, putting sub-game, expansion-ready |
 
 ---
 
@@ -395,7 +462,9 @@ Three build targets, controlled by `#define`:
 2. **Don't use `git pull` on the Pi** — use `git fetch origin && git reset --hard origin/main` to avoid divergent branch errors.
 3. **Don't add POSIX headers outside `#ifndef PLATFORM_WEB`** — breaks the Emscripten build.
 4. **Don't use `renderer_rect` for thick outlines** — it draws 1px. Use fill+cutout pairs with `renderer_rectf`.
-5. **Always run `token-count.py` before building a cartridge** — the 2048 limit is a hard design constraint.
+5. **Token count is advisory, card count is the real limit** — `token-count.py` signals design complexity but is never called by the build pipeline. After building, run `card-print.py` and confirm the game prints to ≤ 8 cards. Star Wars is the current ceiling at 8 cards.
 6. **`mkdir` on macOS/Linux only creates one level** — `~/.glyphbox/saves/` requires creating `~/.glyphbox` first (already handled in `cart.c`).
 7. **`audio_frame_tick()` must be called every frame** — jingle and startup chime sequencers only advance when this is called.
 8. **`sin()`/`cos()` in Lua use turns (0.0–1.0), not radians** — this is intentional and differs from standard Lua.
+9. **Save slots are scoped per-cart by CRC32** — two different `.gbcart` files never share save slots, even with identical metadata. Use the expansion scan mechanic (`scan_begin`/`scan_poll`) to pass data between carts at runtime.
+10. **`scan_begin()`/`scan_poll()` are no-ops on `PLATFORM_WEB`** — the web build has no mid-game scanning path. Games that use expansion scanning should gate that UI behind a platform check or gracefully handle `scan_poll()` always returning `false`.

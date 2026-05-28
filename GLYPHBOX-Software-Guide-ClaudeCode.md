@@ -29,7 +29,7 @@ A software-defined fantasy game console called **GLYPHBOX**. The deliverable is 
 | Display | 128 × 128 pixels, 1-bit monochrome (black or white only) |
 | Input | 4-way cardinal D-pad + 1 action button (Atari 2600 model) |
 | Audio | 2-channel synthesis (square wave + noise) |
-| Code limit | 2,048 Lua tokens per cartridge (enforced at load time) |
+| Code limit | Advisory: ≤ 2,048 Lua tokens for game design simplicity. Not enforced by the runtime or build pipeline. Hard UX limit is ≤ 8 printed cards — check with `card-print.py` after building. |
 | Sprites | 8×8 tiles, 1-bit, max 128 tiles per cartridge |
 | Map | 16×16 tile indices, max |
 | Cartridge format | `.gbcart` binary, QR-encodable |
@@ -197,6 +197,8 @@ int renderer_pget(int x, int y) {
 | `renderer_circf(x,y,r,c)` | Scanline span fill inside radius | One span per row |
 | `renderer_spr(id,x,y,fx,fy)` | 1-bit bitplane blit from sprite array | `fx`/`fy` = horizontal/vertical flip booleans |
 | `renderer_map(cx,cy,x,y,w,h)` | Iterate tile indices, call `renderer_spr` per tile | `cx`/`cy` = map tile origin |
+| `renderer_mset(x,y,tile)` | Write tile index into in-memory tilemap | Bounds-checked; does not persist to cart |
+| `renderer_mget(x,y)` | Read tile index from in-memory tilemap | Returns 0 for out-of-bounds |
 | `renderer_print(str,x,y,c)` | 5×7 bitmap font blit | Font data in `font.h` |
 
 ### font.h
@@ -231,6 +233,8 @@ void renderer_circ(int x, int y, int r, int c);
 void renderer_circf(int x, int y, int r, int c);
 void renderer_spr(int id, int x, int y, int fx, int fy);
 void renderer_map(int cx, int cy, int x, int y, int w, int h);
+void renderer_mset(int x, int y, int tile); // write tile to in-memory tilemap
+int  renderer_mget(int x, int y);           // read tile from in-memory tilemap
 void renderer_print(const char *str, int x, int y, int c);
 void renderer_invert(void);
 void renderer_set_sprites(const uint8_t *data); // called by cart loader
@@ -468,6 +472,8 @@ Register every function in this table. This is the complete and final GLYPHBOX L
 | `spr(id,x,y)` | `renderer_spr(id,x,y,0,0)` | 0 |
 | `spr(id,x,y,fx,fy)` | `renderer_spr(id,x,y,fx,fy)` | 0 |
 | `map(cx,cy,x,y,w,h)` | `renderer_map(...)` | 0 |
+| `mset(x,y,tile)` | `renderer_mset(...)` | 0 |
+| `mget(x,y)` | `renderer_mget(...)` | 1 (tile index) |
 | `print(s,x,y,c)` | `renderer_print(...)` | 0 |
 | `invert()` | `renderer_invert()` | 0 |
 
@@ -506,6 +512,14 @@ Register every function in this table. This is the complete and final GLYPHBOX L
 | `peek(addr)` | read byte from cart ROM | 1 |
 | `save(slot, data)` | `cart_save(slot, data, len)` | 0 |
 | `load(slot)` | `cart_load_save(slot)` | 1 (string or nil) |
+
+**Expansion Scanning** *(native/Pi only; stubs to false on PLATFORM_WEB)*
+| Lua name | Behaviour | Lua return values |
+|---|---|---|
+| `scan_begin()` | Starts the camera scanner subprocess mid-game | 0 |
+| `scan_poll()` | Polls scan result; on success runs scanned cart's `_init()` in a temp VM with mock `save()` interceptor | `nil` = still scanning; `false` = failed/no data; table keyed by slot index = captured payloads |
+
+`scan_poll()` implementation in `lua_api.c`: call `s_scan_poll()` → if 1, `cart_load_file(s_scan_out)` → `luaL_newstate()` → register only mock `save()` as closure with `ExpCap` upvalue → `luaL_loadbuffer` + `lua_pcall` → call `_init` → `lua_close` + `cart_free` → return table. Save slots are per-cart CRC32 scoped and are never shared between carts; the expansion scan mechanic is the only supported cross-cart data path.
 
 ### Button Constants — inject as Lua globals
 ```c
@@ -548,6 +562,13 @@ void lua_api_call_init(void);
 void lua_api_call_update(void);
 void lua_api_call_draw(void);
 void lua_api_set_cart(Cart *cart);  // gives lua_api access to cart ROM for peek()
+/* Register native scan functions — call once after lua_api_init(), native only. */
+void lua_api_set_scan_fns(void (*begin)(void), int (*poll)(void), const char *scan_out);
+```
+
+Call `lua_api_set_scan_fns` from `main.c` after `lua_api_init()`, inside `#ifndef PLATFORM_WEB`:
+```c
+lua_api_set_scan_fns(start_webcam_scan, poll_scan, scan_out);
 ```
 
 ### Verification test
@@ -583,28 +604,55 @@ typedef struct {
 ```
 
 ### Binary Format (.gbcart)
+
+Two format versions exist. `cart-builder.py` produces **v0.4 compressed** by default; pass `--no-compress` for v0.2 legacy.
+
+**v0.4 Compressed (default — Flags bit 0x0002 set):**
+```
+Offset            Size       Content
+0x0000            4          Magic: GBC1 (0x47 0x42 0x43 0x31)
+0x0004            16         Title (null-padded)
+0x0014            8          Author (null-padded)
+0x001C            2          Version (uint16 LE)
+0x001E            2          Flags = 0x0002 (uint16 LE)
+0x0020            2          stored_len: compressed bytecode size (uint16 LE)
+0x0022            2          raw_len: decompressed bytecode size (uint16 LE)
+0x0024            stored_len zlib-compressed LuaJIT bytecode
+0x0024+stored_len 1024       Sprite sheet (128 × 8×8 × 1bpp)
+variable          512        Tile map (16×16 × uint16 LE)
+variable          512        SFX patterns
+variable          256        Music patterns
+EOF-4             4          CRC32 of all preceding bytes (uint32 LE)
+```
+Sections after the bytecode have **no fixed offsets** — parse sequentially.
+
+**v0.2 Legacy (--no-compress — Flags = 0x0000):**
 ```
 Offset   Size    Content
-0x0000   4       Magic: 0x47 0x42 0x43 0x31 ('GBC1')
+0x0000   4       Magic: GBC1 (0x47 0x42 0x43 0x31)
 0x0004   16      Title (null-padded)
 0x0014   8       Author (null-padded)
 0x001C   2       Version (uint16 LE)
-0x001E   2       Flags (uint16 LE)
-0x0020   ≤4096   Lua bytecode
+0x001E   2       Flags = 0x0000 (uint16 LE)
+0x0020   4       Bytecode length (uint32 LE)
+0x0024   ≤4092   Raw LuaJIT bytecode (zero-padded to fill slot)
 0x1020   1024    Sprite sheet (128 × 8×8 × 1bpp)
-0x1420   512     Tile map (16×16 × 2 bytes)
+0x1420   512     Tile map (16×16 × uint16 LE)
 0x1620   512     SFX patterns
 0x1820   256     Music patterns
-EOF-4    4       CRC32 of all preceding bytes (uint32 LE)
+0x1920   4       CRC32 of all preceding bytes (uint32 LE)
 ```
+Fixed offsets apply only to this format. Bytecode hard-capped at 4,092 bytes.
 
 ### Load Sequence
 1. Read entire file into buffer
 2. Check bytes 0–3 == `{ 0x47, 0x42, 0x43, 0x31 }`. Fail with clear error if not.
 3. Compute `zlib crc32(0, buffer, len - 4)`. Compare to `uint32` at `buffer[len - 4]`. Fail if mismatch.
 4. Parse header fields from offsets above into `Cart` struct
-5. Copy bytecode: `cart->bytecode_len = 0x1020 - 0x0020 = 4096` max; find actual length from file size
-6. `memcpy` sprites, tilemap, sfx_data, music_data from their offsets
+5. Parse bytecode based on format version:
+   - v0.4 (Flags & 0x0002): read `stored_len` and `raw_len` from `0x0020`; decompress `stored_len` bytes starting at `0x0024`; sections follow immediately after.
+   - v0.2 (Flags == 0): read 4-byte length prefix at `0x0020`; raw bytecode starts at `0x0024` and sections are at fixed offsets (`0x1020`, `0x1420`, etc.).
+6. `memcpy` sprites, tilemap, sfx_data, music_data from their parsed offsets
 7. Return heap-allocated `Cart*`. Caller calls `cart_free()` when done.
 
 ### Save Slots
@@ -717,6 +765,8 @@ Usage: `python tools/token-count.py demos/bouncer/game.lua`
 
 Exit code 0 if within limit, 1 if over.
 
+**Important:** This tool is advisory only. `cart-builder.py` never calls it, and the runtime has no token concept. The 2,048 figure is a game design complexity guideline. The real hard limit is ≤ 8 printed cards — always verify card count with `card-print.py` after building.
+
 ---
 
 ### tools/cart-builder.py
@@ -737,7 +787,7 @@ Assembles a `.gbcart` binary from a game project directory.
 3. Parse `sprites.txt` → 1024-byte bitplane (pack 8 pixels per byte, MSB first, row-major per tile)
 4. Parse `tilemap.txt` → 512 bytes (16×16 × 2 bytes each, little-endian uint16)
 5. Parse `sfx.txt` and `music.txt` → 512 and 256 bytes respectively
-6. Write binary: magic + header + bytecode (zero-padded to 4096) + sprites + tilemap + sfx + music
+6. Compress bytecode with zlib; if compressed is smaller, write v0.4 format: header + `stored_len`/`raw_len` (4 bytes) + compressed bytecode + sections. Otherwise write v0.2 format with bytecode zero-padded to 4096 bytes and fixed offsets.
 7. Compute `zlib.crc32()` of all bytes written so far
 8. Append CRC32 as 4-byte little-endian uint32
 
@@ -808,7 +858,7 @@ version = 1
 
 **sfx.txt / music.txt:** Empty patterns (all zeros)
 
-**Verification:** Token count must be under 2048. Cart must build. Runtime must show a bouncing ball. BTN_A must invert the display.
+**Verification:** Cart must build. Runtime must show a bouncing ball. BTN_A must invert the display. Run `card-print.py` and confirm 1 card (small game). Token count is advisory — check with `token-count.py` but do not treat it as a build gate.
 
 ---
 
@@ -857,7 +907,7 @@ Complete each step and verify it passes before starting the next. This order min
 | 6 | Implement lua_api.c | Inline Lua draws a white circle with black text in SDL window |
 | 7 | Implement cart.c | Hand-crafted minimal .gbcart loads without error; title prints correctly |
 | 8 | Implement main.c + runtime.c | Splash screen appears; bouncer.gbcart loads and runs |
-| 9 | Write tools/token-count.py | Correctly counts BOUNCER source; reports under 2048 |
+| 9 | Write tools/token-count.py | Correctly counts BOUNCER source; reports count vs 2048 advisory threshold |
 | 10 | Write tools/cart-builder.py | Assembles bouncer.gbcart; runtime runs it |
 | 11 | Write tools/qr-encode.py | Generates bouncer-card.pdf; two Aztec codes visible on rear |
 | 12 | Write Demo 2 (RUNNER) | Ball scrolling, jump, game over, restart all function |

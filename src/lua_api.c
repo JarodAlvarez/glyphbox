@@ -18,6 +18,42 @@ static lua_State *L          = NULL;
 static Cart      *active_cart = NULL;
 static uint32_t   frame_count = 0;
 
+/* ── Expansion scan callbacks ─────────────────────────────────────────────── */
+
+#define EXP_SLOTS    4
+#define EXP_SLOT_MAX 64
+
+typedef struct {
+    uint8_t data[EXP_SLOTS][EXP_SLOT_MAX];
+    int     len[EXP_SLOTS];   /* -1 = slot not written */
+} ExpCap;
+
+static void (*s_scan_begin)(void)  = NULL;
+static int  (*s_scan_poll)(void)   = NULL;
+static char  s_scan_out[512]       = "/tmp/glyphbox_scan.gbcart";
+
+void lua_api_set_scan_fns(void (*begin)(void), int (*poll)(void), const char *out) {
+    s_scan_begin = begin;
+    s_scan_poll  = poll;
+    if (out) snprintf(s_scan_out, sizeof(s_scan_out), "%s", out);
+}
+
+/* Mock save() registered in the temp VM — captures slot data into ExpCap. */
+static int exp_mock_save(lua_State *T) {
+    ExpCap *cap = (ExpCap *)lua_touserdata(T, lua_upvalueindex(1));
+    int slot = (int)lua_tointeger(T, 1);
+    if (slot >= 0 && slot < EXP_SLOTS) {
+        size_t n;
+        const char *d = lua_tolstring(T, 2, &n);
+        if (d) {
+            int copy = ((int)n > EXP_SLOT_MAX) ? EXP_SLOT_MAX : (int)n;
+            memcpy(cap->data[slot], d, (size_t)copy);
+            cap->len[slot] = copy;
+        }
+    }
+    return 0;
+}
+
 /* ── Graphics ─────────────────────────────────────────────────────────────── */
 
 static int l_cls(lua_State *L2) {
@@ -77,6 +113,16 @@ static int l_map(lua_State *L2) {
                  luaL_checkinteger(L2, 3), luaL_checkinteger(L2, 4),
                  luaL_checkinteger(L2, 5), luaL_checkinteger(L2, 6));
     return 0;
+}
+static int l_mset(lua_State *L2) {
+    renderer_mset(luaL_checkinteger(L2, 1), luaL_checkinteger(L2, 2),
+                  luaL_checkinteger(L2, 3));
+    return 0;
+}
+static int l_mget(lua_State *L2) {
+    lua_pushinteger(L2, renderer_mget(luaL_checkinteger(L2, 1),
+                                      luaL_checkinteger(L2, 2)));
+    return 1;
 }
 static int l_print(lua_State *L2) {
     renderer_print(luaL_checkstring(L2, 1),
@@ -202,6 +248,63 @@ static int l_load(lua_State *L2) {
     return 1;
 }
 
+/* ── Expansion scan Lua API ───────────────────────────────────────────────── */
+
+static int l_scan_begin(lua_State *L2) {
+    (void)L2;
+    if (s_scan_begin) s_scan_begin();
+    return 0;
+}
+
+static int l_scan_poll(lua_State *L2) {
+    if (!s_scan_poll) { lua_pushboolean(L2, 0); return 1; }
+
+    int result = s_scan_poll();
+    if (result == 0) { lua_pushnil(L2);        return 1; } /* still scanning */
+    if (result  < 0) { lua_pushboolean(L2, 0); return 1; } /* scan failed   */
+
+    /* Scan succeeded — load the cart and run its _init() in a temp VM,
+       intercepting save() calls to capture expansion slot data.          */
+    Cart *exp = cart_load_file(s_scan_out);
+    if (!exp) { lua_pushboolean(L2, 0); return 1; }
+
+    ExpCap cap;
+    memset(&cap, 0, sizeof(cap));
+    for (int i = 0; i < EXP_SLOTS; i++) cap.len[i] = -1;
+
+    lua_State *T = luaL_newstate();
+    luaopen_base(T);
+    luaopen_string(T);
+
+    lua_pushlightuserdata(T, &cap);
+    lua_pushcclosure(T, exp_mock_save, 1);
+    lua_setglobal(T, "save");
+
+    if (luaL_loadbuffer(T, (const char *)exp->bytecode,
+                        exp->bytecode_len, exp->title) == 0) {
+        lua_pcall(T, 0, 0, 0);
+        lua_getglobal(T, "_init");
+        if (lua_isfunction(T, -1)) lua_pcall(T, 0, 0, 0);
+        else lua_pop(T, 1);
+    }
+
+    lua_close(T);
+    cart_free(exp);
+
+    /* Build result table keyed by slot index. */
+    lua_newtable(L2);
+    int any = 0;
+    for (int i = 0; i < EXP_SLOTS; i++) {
+        if (cap.len[i] > 0) {
+            lua_pushlstring(L2, (const char *)cap.data[i], (size_t)cap.len[i]);
+            lua_rawseti(L2, -2, i);
+            any = 1;
+        }
+    }
+    if (!any) { lua_pop(L2, 1); lua_pushboolean(L2, 0); }
+    return 1;
+}
+
 /* ── Registration & lifecycle ─────────────────────────────────────────────── */
 
 #define REG(name, fn) lua_pushcfunction(L, fn); lua_setglobal(L, name)
@@ -242,6 +345,8 @@ void lua_api_init(void) {
     REG("circf",   l_circf);
     REG("spr",     l_spr);
     REG("map",     l_map);
+    REG("mset",    l_mset);
+    REG("mget",    l_mget);
     REG("print",   l_print);
     REG("invert",  l_invert);
 
@@ -263,9 +368,12 @@ void lua_api_init(void) {
     REG("time",    l_time);
     REG("frame",   l_frame);
 
-    REG("peek",    l_peek);
-    REG("save",    l_save);
-    REG("load",    l_load);
+    REG("peek",       l_peek);
+    REG("save",       l_save);
+    REG("load",       l_load);
+
+    REG("scan_begin", l_scan_begin);
+    REG("scan_poll",  l_scan_poll);
 }
 
 void lua_api_shutdown(void) {

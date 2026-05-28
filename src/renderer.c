@@ -189,6 +189,16 @@ void renderer_set_tilemap(const uint8_t *data) {
     }
 }
 
+void renderer_mset(int x, int y, int tile) {
+    if (x >= 0 && x < 16 && y >= 0 && y < 16)
+        tilemap[y * 16 + x] = (uint16_t)tile;
+}
+int renderer_mget(int x, int y) {
+    if (x >= 0 && x < 16 && y >= 0 && y < 16)
+        return (int)tilemap[y * 16 + x];
+    return 0;
+}
+
 void renderer_debug_ascii(void) {
     for (int y = 0; y < FB_H; y++) {
         for (int x = 0; x < FB_W; x++)
