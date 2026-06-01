@@ -57,8 +57,9 @@ static int           startup_frame = 0;
 #define CAM_HEADER     8
 #define CAM_FRAME_SZ   (CAM_HEADER + CAM_W * CAM_H)
 
-static pid_t        scan_pid      = -1;
-static const char   scan_out[]   = "/tmp/glyphbox_scan.gbcart";
+static pid_t        scan_pid          = -1;
+static int          scan_prefork_done = 0;   /* 1 = scanner already forked at splash */
+static const char   scan_out[]        = "/tmp/glyphbox_scan.gbcart";
 static char         decoder_path[PATH_MAX];
 
 static int          cam_fifo_fd   = -1;
@@ -167,6 +168,7 @@ static int poll_scan(void) {
 }
 
 static void abort_scan(void) {
+    scan_prefork_done = 0;
     if (scan_pid > 0) {
         kill(scan_pid, SIGTERM);
         waitpid(scan_pid, NULL, 0);
@@ -177,6 +179,17 @@ static void abort_scan(void) {
     if (cam_texture) { SDL_DestroyTexture(cam_texture); cam_texture = NULL; }
     cam_recv_used = 0;
     cam_has_frame = 0;
+}
+
+/* Pre-fork the scanner process during the splash screen so Python startup
+   and camera initialisation happen in the background while the user reads
+   the splash.  By the time they press A the process is already running and
+   the first camera frames arrive almost immediately.
+   No-op if the process is already alive. */
+static void prefork_scan(void) {
+    if (scan_pid > 0 || scan_prefork_done) return;
+    start_webcam_scan();
+    scan_prefork_done = (scan_pid > 0) ? 1 : 0;
 }
 
 #else  /* PLATFORM_WEB — stubs so the rest of the file compiles cleanly */
@@ -381,9 +394,20 @@ static void game_loop_tick(void) {
             g_state = STATE_SPLASH;
     }
     else if (g_state == STATE_SPLASH) {
+#ifndef PLATFORM_WEB
+        /* Start the scanner process in the background as soon as the splash
+           appears so Python imports and camera init happen before A is pressed. */
+        if (!scan_prefork_done) prefork_scan();
+#endif
         draw_splash();
         if (input_btnp(BTN_A)) {
+#ifndef PLATFORM_WEB
+            /* Process already running from prefork — just enter scan state.
+               If prefork somehow failed, fall back to the normal on-demand fork. */
+            if (!scan_prefork_done) start_webcam_scan();
+#else
             start_webcam_scan();
+#endif
             g_state = STATE_SCANNING;
         }
     }
@@ -518,6 +542,9 @@ int main(int argc, char *argv[]) {
     audio_init();
     input_init();
     lua_api_init();
+#ifndef PLATFORM_WEB
+    lua_api_set_scan_fns(start_webcam_scan, poll_scan, scan_out);
+#endif
 
     if (cart_path) {
         /* Direct cart load — skip startup animation */
