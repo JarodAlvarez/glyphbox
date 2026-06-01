@@ -13,5 +13,8 @@ void lua_api_call_init(void);
 void lua_api_call_update(void);
 void lua_api_call_draw(void);
 void lua_api_set_cart(Cart *cart);
+/* Register native scan functions so scan_begin()/scan_poll() work in Lua.
+   Not called on PLATFORM_WEB — JS drives scanning there. */
+void lua_api_set_scan_fns(void (*begin)(void), int (*poll)(void), const char *scan_out);
 
 #endif /* GLYPHBOX_LUA_API_H */
