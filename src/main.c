@@ -42,6 +42,7 @@ static SDL_Renderer *sdl_renderer = NULL;
 static int           running      = 1;
 static uint32_t      frame_counter = 0;
 static int           splash_hold  = 0;
+static int           vol_osd_frames = 0;
 
 /* Shared across native and web paths */
 static Cart         *g_cart       = NULL;
@@ -364,15 +365,14 @@ static void game_loop_tick(void) {
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
         if (e.type == SDL_CONTROLLERBUTTONDOWN) {
-            SDL_Log("GLYPHBOX: controller button %d pressed (START=%d BACK=%d)",
-                    e.cbutton.button,
-                    SDL_CONTROLLER_BUTTON_START,
-                    SDL_CONTROLLER_BUTTON_BACK);
             float v = audio_get_volume();
             if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
                 audio_set_volume(v + 0.1f);
             else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
                 audio_set_volume(v - 0.1f);
+            if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
+                e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
+                vol_osd_frames = 60;  /* show OSD for 2 seconds */
         }
         int do_esc = (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) ||
                      (e.type == SDL_CONTROLLERBUTTONDOWN &&
@@ -498,6 +498,18 @@ static void game_loop_tick(void) {
     else
 #endif
         renderer_frame();
+
+    /* ── Volume OSD — brief bar overlay in top-right corner ── */
+    if (vol_osd_frames > 0) {
+        vol_osd_frames--;
+        int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
+        /* background: 12×(10*3+4) = 12×34 box at (114, 2) */
+        renderer_rectf(114, 2, 12, 34, 0);
+        renderer_rect( 114, 2, 12, 34, 1);
+        for (int i = 0; i < steps; i++)
+            renderer_rectf(116, 29 - i*3, 8, 2, 1);
+    }
+
     SDL_RenderPresent(sdl_renderer);
 
     frame_counter++;
