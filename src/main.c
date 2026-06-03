@@ -364,6 +364,10 @@ static void game_loop_tick(void) {
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
         if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+            SDL_Log("GLYPHBOX: controller button %d pressed (START=%d BACK=%d)",
+                    e.cbutton.button,
+                    SDL_CONTROLLER_BUTTON_START,
+                    SDL_CONTROLLER_BUTTON_BACK);
             float v = audio_get_volume();
             if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
                 audio_set_volume(v + 0.1f);
