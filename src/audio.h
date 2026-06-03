@@ -24,4 +24,9 @@ int  audio_jingle_active(void);
 void audio_startup_play(void);
 int  audio_startup_active(void);
 
+/* Master volume — range 0.0 (silent) to 1.0 (full).  Default 1.0.
+   Steps of 0.1 via the controller Start/Select buttons. */
+void  audio_set_volume(float v);
+float audio_get_volume(void);
+
 #endif /* GLYPHBOX_AUDIO_H */

@@ -363,6 +363,13 @@ static void game_loop_tick(void) {
             input_controller_added(e.cdevice.which);
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
+        if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+            float v = audio_get_volume();
+            if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
+                audio_set_volume(v + 0.1f);
+            else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
+                audio_set_volume(v - 0.1f);
+        }
         int do_esc = (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) ||
                      (e.type == SDL_CONTROLLERBUTTONDOWN &&
                       e.cbutton.button == SDL_CONTROLLER_BUTTON_Y);

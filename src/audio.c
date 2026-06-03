@@ -76,6 +76,8 @@ static int  active_music = -1;
 static int  music_sfx_pos = 0;
 static int  music_sfx_frame = 0;
 
+static float master_volume = 1.0f;
+
 /* ── Callback ─────────────────────────────────────────────────────────────── */
 
 static void audio_callback(void *userdata, uint8_t *stream, int len) {
@@ -157,7 +159,7 @@ static void audio_callback(void *userdata, uint8_t *stream, int len) {
         }
 
         /* average mix of 2 cart channels + jingle, scale to int16 */
-        int16_t val = (int16_t)(mix * 0.5 * SCALE);
+        int16_t val = (int16_t)(mix * 0.5 * SCALE * master_volume);
         out[s] = val;
     }
 }
@@ -328,6 +330,14 @@ void audio_frame_tick(void) {
         audio_sfx_pat(m->sfx_ids[music_sfx_pos]);
     }
 }
+
+void audio_set_volume(float v) {
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    master_volume = v;
+}
+
+float audio_get_volume(void) { return master_volume; }
 
 void audio_set_sfx_data(const uint8_t *data, size_t len) {
     if (!data || len == 0) return;
