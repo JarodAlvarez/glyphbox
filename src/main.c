@@ -363,7 +363,10 @@ static void game_loop_tick(void) {
             input_controller_added(e.cdevice.which);
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
-        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+        int do_esc = (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) ||
+                     (e.type == SDL_CONTROLLERBUTTONDOWN &&
+                      e.cbutton.button == SDL_CONTROLLER_BUTTON_Y);
+        if (do_esc) {
             if (g_state == STATE_STARTUP) {
                 g_state = STATE_SPLASH;
             } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
