@@ -490,6 +490,16 @@ static void game_loop_tick(void) {
     /* ── Audio tick ── */
     audio_frame_tick();
 
+    /* ── Volume OSD — drawn into framebuffer before upload ── */
+    if (vol_osd_frames > 0) {
+        vol_osd_frames--;
+        int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
+        renderer_rectf(114, 2, 12, 34, 0);
+        renderer_rect( 114, 2, 12, 34, 1);
+        for (int i = 0; i < steps; i++)
+            renderer_rectf(116, 29 - i*3, 8, 2, 1);
+    }
+
     /* ── Render ── */
     SDL_RenderClear(sdl_renderer);
 #ifndef PLATFORM_WEB
@@ -498,18 +508,6 @@ static void game_loop_tick(void) {
     else
 #endif
         renderer_frame();
-
-    /* ── Volume OSD — brief bar overlay in top-right corner ── */
-    if (vol_osd_frames > 0) {
-        vol_osd_frames--;
-        int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
-        /* background: 12×(10*3+4) = 12×34 box at (114, 2) */
-        renderer_rectf(114, 2, 12, 34, 0);
-        renderer_rect( 114, 2, 12, 34, 1);
-        for (int i = 0; i < steps; i++)
-            renderer_rectf(116, 29 - i*3, 8, 2, 1);
-    }
-
     SDL_RenderPresent(sdl_renderer);
 
     frame_counter++;
