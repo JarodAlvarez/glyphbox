@@ -18,6 +18,10 @@ local bd,pid,gx,gy,gr,nid
 local sc,lv,lns,sp,tm,go
 local arows,aset,at
 local phase,dropping,ty
+-- melody: note_id*4+(dur_units-1), notes={A4,B4,C5,D5,E5,F5,G5,A5}, 1unit=6frames
+local nt={69,71,72,74,76,77,79,81}
+local sq="\17\4\8\13\8\4\1\0\8\17\12\8\6\8\13\17\9\1\1\14\20\29\24\20\18\8\17\12\8\5\4\8\13\17\9\1\1"
+local mt,mi
 
 local function blks(id,r)
   local t=P[id][((r-1)%#P[id])+1]
@@ -83,6 +87,7 @@ end
 function _init()
   phase=0
   arows,aset={},{}
+  mt,mi=99,1
 end
 
 local dr={}
@@ -96,6 +101,9 @@ local function held(b)
 end
 
 function _update()
+  mt=mt+1
+  local v=string.byte(sq,mi)
+  if mt>=(v%4+1)*6 then mt=0;sfx(0,nt[flr(v/4)+1],5,0,30);mi=mi%#sq+1 end
   if phase==0 then if btnp(BTN_A) then start_game() end; return end
   if go then if btnp(BTN_A) then start_game() end; return end
   if #arows>0 then at=at+1; if at>=ADUR then do_clear() end; return end
