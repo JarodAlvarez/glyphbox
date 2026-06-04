@@ -142,9 +142,11 @@ int input_btnr(int b) { return !cur[b] &&  prev[b]; }
    Hold both buttons for RESET_HOLD_FRAMES consecutive frames (1 second at
    30 fps) to eject the current cart and return to the splash screen.
    Returns 1 exactly once when the threshold is crossed, 0 otherwise.      */
-#define RESET_HOLD_FRAMES 30
+#define RESET_HOLD_FRAMES    30
+#define SHUTDOWN_HOLD_FRAMES 60   /* 2 seconds */
 
-static int reset_combo_held = 0;
+static int reset_combo_held    = 0;
+static int shutdown_combo_held = 0;
 
 int input_reset_combo(void) {
     int held = 0;
@@ -162,6 +164,42 @@ int input_reset_combo(void) {
         }
     } else {
         reset_combo_held = 0;
+    }
+    return 0;
+}
+
+/* ── Select (Back) held state ─────────────────────────────────────────────
+   Used to gate triangle/ESC so it doesn't fire during the shutdown combo.  */
+int input_back_held(void) {
+    for (int i = 0; i < num_slots; i++) {
+        SDL_GameController *gc = slots[i].gc;
+        if (!gc) continue;
+        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK))
+            return 1;
+    }
+    return 0;
+}
+
+/* ── Select + Triangle shutdown combo ─────────────────────────────────────
+   Hold both for 2 seconds to initiate a clean shutdown.
+   Returns 1 exactly once when the threshold is crossed, 0 otherwise.      */
+int input_shutdown_combo(void) {
+    int held = 0;
+    for (int i = 0; i < num_slots; i++) {
+        SDL_GameController *gc = slots[i].gc;
+        if (!gc) continue;
+        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
+            SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y))
+            { held = 1; break; }
+    }
+    if (held) {
+        shutdown_combo_held++;
+        if (shutdown_combo_held == SHUTDOWN_HOLD_FRAMES) {
+            shutdown_combo_held = 0;
+            return 1;
+        }
+    } else {
+        shutdown_combo_held = 0;
     }
     return 0;
 }

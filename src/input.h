@@ -19,6 +19,13 @@ int  input_btnr(int b);
    Returns 1 the frame the threshold is crossed, 0 every other frame.       */
 int  input_reset_combo(void);
 
+/* 1 if Select (Back) is currently held — used to gate triangle/ESC. */
+int  input_back_held(void);
+
+/* Hold Select + Triangle for 2 seconds to initiate a clean shutdown.
+   Returns 1 the frame the threshold is crossed, 0 every other frame.       */
+int  input_shutdown_combo(void);
+
 /* Hotplug callbacks — call from main.c event loop.
    joystick_idx  : event.cdevice.which from SDL_CONTROLLERDEVICEADDED
    instance_id   : event.cdevice.which from SDL_CONTROLLERDEVICEREMOVED  */

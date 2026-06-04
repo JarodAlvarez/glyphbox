@@ -376,7 +376,8 @@ static void game_loop_tick(void) {
         }
         int do_esc = (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) ||
                      (e.type == SDL_CONTROLLERBUTTONDOWN &&
-                      e.cbutton.button == SDL_CONTROLLER_BUTTON_Y);
+                      e.cbutton.button == SDL_CONTROLLER_BUTTON_Y &&
+                      !input_back_held());
         if (do_esc) {
             if (g_state == STATE_STARTUP) {
                 g_state = STATE_SPLASH;
@@ -396,6 +397,19 @@ static void game_loop_tick(void) {
 
     /* ── Input ── */
     input_update();
+
+#ifndef PLATFORM_WEB
+    /* ── Shutdown combo (Select + Triangle held 2 s) ── */
+    if (input_shutdown_combo()) {
+        renderer_cls(0);
+        renderer_print("SHUTTING DOWN", 28, 60, 1);
+        renderer_frame();
+        SDL_RenderPresent(sdl_renderer);
+        SDL_Delay(1500);
+        system("sudo shutdown -h now");
+        running = 0;
+    }
+#endif
 
     /* ── State machine ── */
     if (g_state == STATE_STARTUP) {
