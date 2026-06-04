@@ -145,35 +145,9 @@ int input_btn(int b)  { return cur[b]; }
 int input_btnp(int b) { return  cur[b] && !prev[b]; }
 int input_btnr(int b) { return !cur[b] &&  prev[b]; }
 
-/* ── Start + Select eject combo ───────────────────────────────────────────
-   Hold both buttons for RESET_HOLD_FRAMES consecutive frames (1 second at
-   30 fps) to eject the current cart and return to the splash screen.
-   Returns 1 exactly once when the threshold is crossed, 0 otherwise.      */
-#define RESET_HOLD_FRAMES    30
 #define SHUTDOWN_HOLD_FRAMES 60   /* 2 seconds */
 
-static int reset_combo_held    = 0;
 static int shutdown_combo_held = 0;
-
-int input_reset_combo(void) {
-    int held = 0;
-    for (int i = 0; i < num_slots; i++) {
-        SDL_GameController *gc = slots[i].gc;
-        if (!gc) continue;
-        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START))
-            { held = 1; break; }
-    }
-    if (held) {
-        reset_combo_held++;
-        if (reset_combo_held == RESET_HOLD_FRAMES) {
-            reset_combo_held = 0;
-            return 1;
-        }
-    } else {
-        reset_combo_held = 0;
-    }
-    return 0;
-}
 
 /* ── Triangle tapped (polled, not event-based) ────────────────────────────
    Returns 1 on the frame triangle transitions to pressed AND Select is not

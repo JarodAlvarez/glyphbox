@@ -499,15 +499,6 @@ static void game_loop_tick(void) {
         }
     }
     else { /* STATE_RUNNING */
-        if (input_reset_combo()) {
-            audio_music(-1);
-            cart_free(g_cart); g_cart = NULL;
-            lua_api_unload();
-            g_state = STATE_SPLASH;
-#ifdef PLATFORM_WEB
-            EM_ASM( GlyphboxScanner.showScanButton(); );
-#endif
-        }
         lua_api_call_update();
         lua_api_call_draw();
     }
