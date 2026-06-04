@@ -412,12 +412,14 @@ static void game_loop_tick(void) {
 
     /* ── Shutdown combo (Select + Triangle held 2 s) ── */
     if (input_shutdown_combo()) {
+        SDL_Log("GLYPHBOX: shutdown combo triggered");
         renderer_cls(0);
         renderer_print("SHUTTING DOWN", 28, 60, 1);
         renderer_frame();
         SDL_RenderPresent(sdl_renderer);
         SDL_Delay(1500);
-        system("sudo shutdown -h now");
+        int ret = system("sudo shutdown -h now");
+        SDL_Log("GLYPHBOX: shutdown command returned %d", ret);
         running = 0;
     }
 #endif
