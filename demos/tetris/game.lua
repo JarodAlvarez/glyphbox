@@ -18,10 +18,17 @@ local bd,pid,gx,gy,gr,nid
 local sc,lv,lns,sp,tm,go
 local arows,aset,at
 local phase,dropping,ty
--- melody: note_id*4+(dur_units-1), notes={A4,B4,C5,D5,E5,F5,G5,A5}, 1unit=6frames
-local nt={69,71,72,74,76,77,79,81}
-local sq="\17\4\8\13\8\4\1\0\8\17\12\8\6\8\13\17\9\1\3\14\20\29\24\20\18\8\17\12\8\5\4\8\13\17\9\1\3"
-local mt,mi
+-- music: 3 bytes/note = {midi, vol, dur_frames}; 0 midi = rest (timer still advances)
+local LD="\064\005\012\059\005\006\060\005\006\062\005\006\064\005\003\062\005\003\060\005\006\059\005\006\057\005\012\000\000\012\064\005\012\062\005\006\060\005\006\059\005\012\000\000\006\060\005\006\062\005\012\064\005\012\057\005\012\000\000\042\062\005\012\065\005\006\069\005\012\067\005\006\065\005\006\064\005\012\000\000\006\060\005\006\064\005\012\062\005\006\060\005\006\059\005\018\060\005\006\062\005\012\064\005\012\060\005\012\000\000\036"
+local BS="\000\000\006\040\004\006\000\000\006\040\004\006\000\000\006\040\004\006\000\000\006\040\004\006\052\004\018\045\004\006\000\000\006\045\004\006\000\000\006\045\004\006\000\000\006\052\004\006\000\000\006\044\004\006\000\000\006\040\004\006\000\000\006\040\004\006\000\000\006\045\004\006\000\000\006\045\004\006\000\000\006\045\004\006\047\004\006\048\004\006\050\004\006\000\000\048\048\004\006\000\000\006\052\004\006\000\000\018\052\004\006\047\004\006\052\004\006\000\000\006\047\004\006\000\000\006\040\004\006\000\000\006\044\004\006\000\000\006\045\004\006\000\000\006\045\004\006\000\000\024"
+local lp,lt,bp,bt=1,0,1,0
+local function gb(s,i) local b=(i-1)*3+1; return string.byte(s,b,b+2) end
+local function music_tick()
+  lt=lt-1
+  if lt<=0 then local n,v,d=gb(LD,lp);n>0 and sfx(0,n,v,0,d);lt=d;lp=lp%37+1 end
+  bt=bt-1
+  if bt<=0 then local n,v,d=gb(BS,bp);n>0 and sfx(1,n,v,1,d);bt=d;bp=bp%50+1 end
+end
 
 local function blks(id,r)
   local t=P[id][((r-1)%#P[id])+1]
@@ -87,7 +94,6 @@ end
 function _init()
   phase=0
   arows,aset={},{}
-  mt,mi=99,1
 end
 
 local dr={}
@@ -101,12 +107,7 @@ local function held(b)
 end
 
 function _update()
-  mt=mt+1
-  local v=string.byte(sq,mi)
-  if mt>=(v%4+1)*6 then
-    mt=0;sfx(0,nt[flr(v/4)+1],5,0,30);mi=mi%#sq+1
-    if v%4>0 then sfx(1,nt[flr(v/4)+1]-24,4,1,30) end
-  end
+  music_tick()
   if phase==0 then if btnp(BTN_A) then start_game() end; return end
   if go then if btnp(BTN_A) then start_game() end; return end
   if #arows>0 then at=at+1; if at>=ADUR then do_clear() end; return end
