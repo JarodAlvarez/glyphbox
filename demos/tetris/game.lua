@@ -20,7 +20,7 @@ local arows,aset,at
 local phase,dropping,ty
 -- melody: note_id*4+(dur_units-1), notes={A4,B4,C5,D5,E5,F5,G5,A5}, 1unit=6frames
 local nt={69,71,72,74,76,77,79,81}
-local sq="\17\4\8\13\8\4\1\0\8\17\12\8\6\8\13\17\9\1\1\14\20\29\24\20\18\8\17\12\8\5\4\8\13\17\9\1\1"
+local sq="\17\4\8\13\8\4\1\0\8\17\12\8\6\8\13\17\9\1\3\14\20\29\24\20\18\8\17\12\8\5\4\8\13\17\9\1\3"
 local mt,mi
 
 local function blks(id,r)
@@ -103,7 +103,10 @@ end
 function _update()
   mt=mt+1
   local v=string.byte(sq,mi)
-  if mt>=(v%4+1)*6 then mt=0;sfx(0,nt[flr(v/4)+1],5,0,30);mi=mi%#sq+1 end
+  if mt>=(v%4+1)*6 then
+    mt=0;sfx(0,nt[flr(v/4)+1],5,0,30);mi=mi%#sq+1
+    if v%4>0 then sfx(1,nt[flr(v/4)+1]-24,4,1,30) end
+  end
   if phase==0 then if btnp(BTN_A) then start_game() end; return end
   if go then if btnp(BTN_A) then start_game() end; return end
   if #arows>0 then at=at+1; if at>=ADUR then do_clear() end; return end
@@ -142,8 +145,6 @@ function _draw()
   if phase==0 then
     rectf(14,30,100,14,1)
     print("TETRIS",46,33,0)
-    rectf(61,53,6,6,1)
-    rectf(54,60,6,6,1); rectf(61,60,6,6,1); rectf(68,60,6,6,1)
     if frame()%40<28 then print("A: START",40,90,1) end
     print("(C) GUREEDO",31,118,1)
     return
