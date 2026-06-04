@@ -182,9 +182,6 @@ int input_shutdown_combo(void) {
     }
     if (held) {
         shutdown_combo_held++;
-        if (shutdown_combo_held == 1 || shutdown_combo_held == 30 || shutdown_combo_held == 60)
-            SDL_Log("GLYPHBOX: shutdown combo held %d / %d frames",
-                    shutdown_combo_held, SHUTDOWN_HOLD_FRAMES);
         if (shutdown_combo_held == SHUTDOWN_HOLD_FRAMES) {
             shutdown_combo_held = 0;
             return 1;
