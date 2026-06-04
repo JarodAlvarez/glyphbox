@@ -401,12 +401,12 @@ def _open_picamera2() -> tuple:
 
     # Enable continuous autofocus and raise in-ISP sharpness.
     # AfMode=2 + AfSpeed=1: continuous fast AF (AF cameras only; fixed-focus
-    # cameras silently ignore it).  Sharpness=2.0 sharpens module edges at
+    # cameras silently ignore it).  Sharpness=4.0 sharpens module edges at
     # the ISP level so every captured frame is crisper before we even look
     # at it — helps the first pass succeed without needing the software
-    # sharpening fallback.
+    # sharpening fallback.  Dense codes (101×101 modules) benefit most.
     try:
-        cam.set_controls({"AfMode": 2, "AfSpeed": 1, "Sharpness": 2.0})
+        cam.set_controls({"AfMode": 2, "AfSpeed": 1, "Sharpness": 4.0})
         _time.sleep(1.0)   # allow AF to converge before first capture
     except Exception:
         pass
@@ -680,12 +680,13 @@ def decode_from_webcam(output_path: str, device: int = 0,
         # main capture loop never blocks on the expensive cv2.undistort call.
         if force_pi and not no_undistort:
             snap = _undistort_frame(snap, k1=distort_k1, k2=distort_k2)
-        # Downscale to 960×540 before the 4-pass pipeline.
-        # CLAHE and adaptive threshold cost scales with pixel count — this
-        # gives a 4× reduction in work with negligible impact on Aztec
-        # decode accuracy (still ~300 px per code side at typical distance).
-        if snap.width > 960:
-            snap = snap.resize((960, 540))
+        # Downscale to 1280×720 before the 4-pass pipeline.
+        # Dense 8-card carts (e.g. putt) generate 101×101-module Aztec codes;
+        # at 960×540 the code side is ~320 px → ~3 px/module, right at the
+        # decode floor.  1280×720 gives ~400 px → ~4 px/module, above the
+        # reliable threshold, with modest extra cost on Pi ARM.
+        if snap.width > 1280:
+            snap = snap.resize((1280, 720))
         result = _scan_for_halves(snap, camera_mode=True)
         with _scan_lock:
             _scan_pending.update(result)
