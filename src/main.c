@@ -537,6 +537,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "GLYPHBOX: SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
+    SDL_ShowCursor(SDL_DISABLE);
 
 #ifdef PLATFORM_PI_HDMI
     window = SDL_CreateWindow("GLYPHBOX",
