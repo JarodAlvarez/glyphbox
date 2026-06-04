@@ -25,13 +25,13 @@ local lp,lt,bp,bt=1,0,1,0
 local function gb(s,i) local b=(i-1)*3+1; return string.byte(s,b,b+2) end
 local function music_tick()
   lt=lt-1
-  if lt<=0 then local n,v,d=gb(LD,lp);n>0 and sfx(0,n,v,0,d);lt=d;lp=lp%37+1 end
+  if lt<=0 then local n,v,d=gb(LD,lp);sfx(0,n,v,0,d);lt=d-1;lp=lp%37+1 end
   bt=bt-1
-  if bt<=0 then local n,v,d=gb(BS,bp);n>0 and sfx(1,n,v,1,d);bt=d;bp=bp%50+1 end
+  if bt<=0 then local n,v,d=gb(BS,bp);sfx(1,n,v,1,d);bt=d-1;bp=bp%50+1 end
 end
 
 local function blks(id,r)
-  local t=P[id][((r-1)%#P[id])+1]
+  local t=P[id][(r-1)%#P[id]+1]
   local b={}
   for i=1,8,2 do b[#b+1]={t[i],t[i+1]} end
   return b
@@ -166,7 +166,7 @@ function _draw()
       end
     end
   end
-  local ux=OX+W*SZ+5
+  local ux=68
   print("SCR",ux,OY,1)
   print(sc,ux,OY+8,1)
   print("LV",ux,OY+20,1)
