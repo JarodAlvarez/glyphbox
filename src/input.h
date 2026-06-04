@@ -19,6 +19,9 @@ int  input_btnr(int b);
    Returns 1 the frame the threshold is crossed, 0 every other frame.       */
 int  input_reset_combo(void);
 
+/* 1 on the frame triangle is first pressed AND Select is not held. */
+int  input_triangle_tapped(void);
+
 /* 1 if Select (Back) is currently held — used to gate triangle/ESC. */
 int  input_back_held(void);
 

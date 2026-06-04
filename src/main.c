@@ -374,11 +374,7 @@ static void game_loop_tick(void) {
                 e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
                 vol_osd_frames = 60;  /* show OSD for 2 seconds */
         }
-        int do_esc = (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) ||
-                     (e.type == SDL_CONTROLLERBUTTONDOWN &&
-                      e.cbutton.button == SDL_CONTROLLER_BUTTON_Y &&
-                      !input_back_held());
-        if (do_esc) {
+        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
             if (g_state == STATE_STARTUP) {
                 g_state = STATE_SPLASH;
             } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
@@ -399,6 +395,21 @@ static void game_loop_tick(void) {
     input_update();
 
 #ifndef PLATFORM_WEB
+    /* ── Triangle ESC (polled to avoid event-ordering race with shutdown combo) ── */
+    if (input_triangle_tapped()) {
+        if (g_state == STATE_STARTUP) {
+            g_state = STATE_SPLASH;
+        } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
+            audio_music(-1);
+            cart_free(g_cart); g_cart = NULL;
+            lua_api_unload();
+            g_state = STATE_SPLASH;
+        } else if (g_state == STATE_SCANNING) {
+            abort_scan();
+            g_state = STATE_SPLASH;
+        }
+    }
+
     /* ── Shutdown combo (Select + Triangle held 2 s) ── */
     if (input_shutdown_combo()) {
         renderer_cls(0);

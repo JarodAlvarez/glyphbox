@@ -15,6 +15,8 @@
 
 static uint8_t cur[BTN_COUNT];
 static uint8_t prev[BTN_COUNT];
+static uint8_t y_cur  = 0;   /* triangle button — tracked separately for combo gating */
+static uint8_t y_prev = 0;
 
 typedef struct {
     SDL_GameController *gc;
@@ -73,6 +75,8 @@ void input_init(void) {
 
 void input_update(void) {
     memcpy(prev, cur, BTN_COUNT);
+    y_prev = y_cur;
+    y_cur  = 0;
 
     /* ── Keyboard ──────────────────────────────────────────────────────── */
     const uint8_t *ks = SDL_GetKeyboardState(NULL);
@@ -109,6 +113,9 @@ void input_update(void) {
         if (ax >  AXIS_DEADZONE) cur[BTN_R] = 1;
         if (ay < -AXIS_DEADZONE) cur[BTN_U] = 1;
         if (ay >  AXIS_DEADZONE) cur[BTN_D] = 1;
+
+        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y))
+            y_cur = 1;
     }
 }
 
@@ -166,6 +173,13 @@ int input_reset_combo(void) {
         reset_combo_held = 0;
     }
     return 0;
+}
+
+/* ── Triangle tapped (polled, not event-based) ────────────────────────────
+   Returns 1 on the frame triangle transitions to pressed AND Select is not
+   held.  Polled to avoid event-ordering races with the shutdown combo.     */
+int input_triangle_tapped(void) {
+    return y_cur && !y_prev && !input_back_held();
 }
 
 /* ── Select (Back) held state ─────────────────────────────────────────────
