@@ -429,6 +429,8 @@ static void game_loop_tick(void) {
 
     /* ── Triangle: single menu button — toggles the menu overlay ── */
     if (input_triangle_tapped()) {
+        SDL_Log("GLYPHBOX: triangle tapped, g_state=%d menu_active=%d (CART_LOADED=%d RUNNING=%d)",
+                g_state, menu_active, STATE_CART_LOADED, STATE_RUNNING);
         if (g_state == STATE_STARTUP) {
             g_state = STATE_SPLASH;       /* skip boot animation, as before */
         } else if (g_state == STATE_CART_LOADED) {
