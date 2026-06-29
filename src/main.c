@@ -431,6 +431,11 @@ static void game_loop_tick(void) {
     if (input_triangle_tapped()) {
         if (g_state == STATE_STARTUP) {
             g_state = STATE_SPLASH;       /* skip boot animation, as before */
+        } else if (g_state == STATE_CART_LOADED) {
+            audio_music(-1);
+            cart_free(g_cart); g_cart = NULL;
+            lua_api_unload();
+            g_state = STATE_SPLASH;
         } else if (menu_active) {
             menu_active = 0;              /* close, resume */
         } else {
