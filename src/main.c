@@ -338,7 +338,7 @@ static void menu_open(void) {
     menu_cursor    = 0;
     menu_row_count = 0;
     menu_rows[menu_row_count++] = MENU_VOLUME;
-    if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED || g_state == STATE_SCANNING)
+    if (g_state == STATE_RUNNING)
         menu_rows[menu_row_count++] = MENU_EXIT;
 #ifndef PLATFORM_WEB
     menu_rows[menu_row_count++] = MENU_SHUTDOWN;
@@ -429,15 +429,16 @@ static void game_loop_tick(void) {
 
     /* ── Triangle: single menu button — toggles the menu overlay ── */
     if (input_triangle_tapped()) {
-        SDL_Log("GLYPHBOX: triangle tapped, g_state=%d menu_active=%d (CART_LOADED=%d RUNNING=%d)",
-                g_state, menu_active, STATE_CART_LOADED, STATE_RUNNING);
         if (g_state == STATE_STARTUP) {
-            g_state = STATE_SPLASH;       /* skip boot animation, as before */
+            g_state = STATE_SPLASH;       /* skip boot animation */
+        } else if (g_state == STATE_SCANNING) {
+            abort_scan();
+            g_state = STATE_SPLASH;       /* cancel scan immediately */
         } else if (g_state == STATE_CART_LOADED) {
             audio_music(-1);
             cart_free(g_cart); g_cart = NULL;
             lua_api_unload();
-            g_state = STATE_SPLASH;
+            g_state = STATE_SPLASH;       /* cancel before game starts */
         } else if (menu_active) {
             menu_active = 0;              /* close, resume */
         } else {
