@@ -349,7 +349,7 @@ static void menu_open(void) {
 static const char *menu_row_label(MenuAction a) {
     switch (a) {
         case MENU_VOLUME:   return "VOLUME";
-        case MENU_EXIT:     return "EXIT TO SPLASH";
+        case MENU_EXIT:     return "EXIT GAME";
         case MENU_SHUTDOWN: return "SHUTDOWN";
     }
     return "";
