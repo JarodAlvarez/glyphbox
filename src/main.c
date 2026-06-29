@@ -395,6 +395,31 @@ static void draw_splash_scan(void) {
 #endif
 }
 
+/* ── Volume preference — persisted to ~/.glyphbox/volume ─────────────────── */
+static void volume_pref_load(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[256];
+    snprintf(path, sizeof(path), "%s/.glyphbox/volume", home);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    float v = 1.0f;
+    fscanf(f, "%f", &v);
+    fclose(f);
+    audio_set_volume(v);
+}
+
+static void volume_pref_save(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[256];
+    snprintf(path, sizeof(path), "%s/.glyphbox/volume", home);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fprintf(f, "%f\n", audio_get_volume());
+    fclose(f);
+}
+
 /* ── One game-loop tick (extracted so Emscripten can use it as callback) ─── */
 static uint32_t last_tick = 0;
 
@@ -456,8 +481,8 @@ static void game_loop_tick(void) {
         MenuAction sel = menu_rows[menu_cursor];
         if (sel == MENU_VOLUME) {
             float v = audio_get_volume();
-            if (input_btnp(BTN_L)) audio_set_volume(v - 0.1f);
-            if (input_btnp(BTN_R)) audio_set_volume(v + 0.1f);
+            if (input_btnp(BTN_L)) { audio_set_volume(v - 0.1f); volume_pref_save(); }
+            if (input_btnp(BTN_R)) { audio_set_volume(v + 0.1f); volume_pref_save(); }
         }
         if (input_btnp(BTN_A)) {
             if (sel == MENU_EXIT) {
@@ -621,6 +646,7 @@ int main(int argc, char *argv[]) {
     runtime_init();
     renderer_init(sdl_renderer);
     audio_init();
+    volume_pref_load();
     input_init();
     lua_api_init();
 #ifndef PLATFORM_WEB
