@@ -42,11 +42,20 @@ static SDL_Renderer *sdl_renderer = NULL;
 static int           running      = 1;
 static uint32_t      frame_counter = 0;
 static int           splash_hold  = 0;
-static int           vol_osd_frames = 0;
 
 /* Shared across native and web paths */
 static Cart         *g_cart       = NULL;
 static ConsoleState  g_state      = STATE_STARTUP;
+
+/* ── Menu overlay ─────────────────────────────────────────────────────────
+   Triangle is the single menu button: opens/closes an overlay with volume
+   control, exit-to-splash, and shutdown.  Available from any state except
+   STATE_STARTUP (triangle there just skips the boot animation, as before). */
+typedef enum { MENU_VOLUME, MENU_EXIT, MENU_SHUTDOWN } MenuAction;
+static int        menu_active   = 0;
+static int        menu_cursor   = 0;
+static MenuAction menu_rows[3];
+static int        menu_row_count = 0;
 static int           startup_frame = 0;
 
 /* ── Native-only: subprocess scanning & FIFO camera preview ─────────────── */
@@ -324,6 +333,53 @@ static void draw_cart_loaded(Cart *c) {
     renderer_print(dots[(frame_counter / 6) % 3], 55, 80, 1);
 }
 
+/* Populate menu_rows[] based on the state the menu was opened from. */
+static void menu_open(void) {
+    menu_cursor    = 0;
+    menu_row_count = 0;
+    menu_rows[menu_row_count++] = MENU_VOLUME;
+    if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED || g_state == STATE_SCANNING)
+        menu_rows[menu_row_count++] = MENU_EXIT;
+#ifndef PLATFORM_WEB
+    menu_rows[menu_row_count++] = MENU_SHUTDOWN;
+#endif
+    menu_active = 1;
+}
+
+static const char *menu_row_label(MenuAction a) {
+    switch (a) {
+        case MENU_VOLUME:   return "VOLUME";
+        case MENU_EXIT:     return "EXIT TO SPLASH";
+        case MENU_SHUTDOWN: return "SHUTDOWN";
+    }
+    return "";
+}
+
+static void draw_menu(void) {
+    renderer_cls(0);
+    renderer_rect(2, 2, 124, 124, 1);
+    renderer_print("MENU", 48, 8, 1);
+    renderer_rectf(4, 18, 120, 1, 1);
+
+    int y = 30;
+    for (int i = 0; i < menu_row_count; i++) {
+        MenuAction a = menu_rows[i];
+        renderer_print(menu_cursor == i ? ">" : " ", 6, y, 1);
+        renderer_print(menu_row_label(a), 14, y, 1);
+
+        if (a == MENU_VOLUME) {
+            int bar_x = 14, bar_y = y + 10, bar_w = 100, bar_h = 6;
+            renderer_rect(bar_x, bar_y, bar_w, bar_h, 1);
+            int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
+            for (int s = 0; s < steps; s++)
+                renderer_rectf(bar_x + 2 + s * 9, bar_y + 2, 7, bar_h - 4, 1);
+            y += 26;
+        } else {
+            y += 16;
+        }
+    }
+}
+
 static void draw_splash_scan(void) {
     renderer_cls(0);
     renderer_print("GLYPHBOX", 40, 20, 1);
@@ -351,16 +407,6 @@ static void game_loop_tick(void) {
             input_controller_added(e.cdevice.which);
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
-        if (e.type == SDL_CONTROLLERBUTTONDOWN) {
-            float v = audio_get_volume();
-            if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
-                audio_set_volume(v + 0.1f);
-            else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
-                audio_set_volume(v - 0.1f);
-            if (e.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
-                e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK)
-                vol_osd_frames = 60;  /* show OSD for 2 seconds */
-        }
         if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
             if (g_state == STATE_STARTUP) {
                 g_state = STATE_SPLASH;
@@ -381,36 +427,56 @@ static void game_loop_tick(void) {
     /* ── Input ── */
     input_update();
 
-#ifndef PLATFORM_WEB
-    /* ── Triangle ESC (polled to avoid event-ordering race with shutdown combo) ── */
+    /* ── Triangle: single menu button — toggles the menu overlay ── */
     if (input_triangle_tapped()) {
         if (g_state == STATE_STARTUP) {
-            g_state = STATE_SPLASH;
-        } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
-            audio_music(-1);
-            cart_free(g_cart); g_cart = NULL;
-            lua_api_unload();
-            g_state = STATE_SPLASH;
-        } else if (g_state == STATE_SCANNING) {
-            abort_scan();
-            g_state = STATE_SPLASH;
+            g_state = STATE_SPLASH;       /* skip boot animation, as before */
+        } else if (menu_active) {
+            menu_active = 0;              /* close, resume */
+        } else {
+            menu_open();
         }
     }
 
-    /* ── Shutdown combo (Select + Triangle held 2 s) ── */
-    if (input_shutdown_combo()) {
-        renderer_cls(0);
-        renderer_print("SHUTTING DOWN", 28, 60, 1);
-        renderer_frame();
-        SDL_RenderPresent(sdl_renderer);
-        SDL_Delay(1500);
-        system("sudo shutdown -h now");
-        running = 0;
-    }
-#endif
-
     /* ── State machine ── */
-    if (g_state == STATE_STARTUP) {
+    if (menu_active) {
+        if (input_btnp(BTN_U))
+            menu_cursor = (menu_cursor - 1 + menu_row_count) % menu_row_count;
+        if (input_btnp(BTN_D))
+            menu_cursor = (menu_cursor + 1) % menu_row_count;
+
+        MenuAction sel = menu_rows[menu_cursor];
+        if (sel == MENU_VOLUME) {
+            float v = audio_get_volume();
+            if (input_btnp(BTN_L)) audio_set_volume(v - 0.1f);
+            if (input_btnp(BTN_R)) audio_set_volume(v + 0.1f);
+        }
+        if (input_btnp(BTN_A)) {
+            if (sel == MENU_EXIT) {
+                audio_music(-1);
+                if (g_state == STATE_SCANNING) abort_scan();
+                else { cart_free(g_cart); g_cart = NULL; lua_api_unload(); }
+                g_state = STATE_SPLASH;
+                menu_active = 0;
+#ifdef PLATFORM_WEB
+                EM_ASM( GlyphboxScanner.showScanButton(); );
+#endif
+            }
+#ifndef PLATFORM_WEB
+            else if (sel == MENU_SHUTDOWN) {
+                renderer_cls(0);
+                renderer_print("SHUTTING DOWN", 28, 60, 1);
+                renderer_frame();
+                SDL_RenderPresent(sdl_renderer);
+                SDL_Delay(1500);
+                system("sudo shutdown -h now");
+                running = 0;
+            }
+#endif
+        }
+        draw_menu();
+    }
+    else if (g_state == STATE_STARTUP) {
         if (startup_frame == 0) audio_startup_play();
         draw_startup(startup_frame);
         startup_frame++;
@@ -482,20 +548,10 @@ static void game_loop_tick(void) {
     /* ── Audio tick ── */
     audio_frame_tick();
 
-    /* ── Volume OSD — drawn into framebuffer before upload ── */
-    if (vol_osd_frames > 0) {
-        vol_osd_frames--;
-        int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
-        renderer_rectf(114, 2, 12, 34, 0);
-        renderer_rect( 114, 2, 12, 34, 1);
-        for (int i = 0; i < steps; i++)
-            renderer_rectf(116, 29 - i*3, 8, 2, 1);
-    }
-
     /* ── Render ── */
     SDL_RenderClear(sdl_renderer);
 #ifndef PLATFORM_WEB
-    if (g_state == STATE_SCANNING && cam_has_frame)
+    if (!menu_active && g_state == STATE_SCANNING && cam_has_frame)
         SDL_RenderCopy(sdl_renderer, cam_texture, NULL, NULL);
     else
 #endif

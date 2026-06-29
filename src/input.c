@@ -145,49 +145,9 @@ int input_btn(int b)  { return cur[b]; }
 int input_btnp(int b) { return  cur[b] && !prev[b]; }
 int input_btnr(int b) { return !cur[b] &&  prev[b]; }
 
-#define SHUTDOWN_HOLD_FRAMES 60   /* 2 seconds */
-
-static int shutdown_combo_held = 0;
-
-/* ── Triangle tapped (polled, not event-based) ────────────────────────────
-   Returns 1 on the frame triangle transitions to pressed AND Select is not
-   held.  Polled to avoid event-ordering races with the shutdown combo.     */
+/* ── Triangle tapped (polled, not event-based) ─────────────────────────────
+   Returns 1 on the frame triangle transitions from released to pressed.
+   Triangle is the single menu button — opens/closes the menu overlay.     */
 int input_triangle_tapped(void) {
-    return y_cur && !y_prev && !input_back_held();
-}
-
-/* ── Select (Back) held state ─────────────────────────────────────────────
-   Used to gate triangle/ESC so it doesn't fire during the shutdown combo.  */
-int input_back_held(void) {
-    for (int i = 0; i < num_slots; i++) {
-        SDL_GameController *gc = slots[i].gc;
-        if (!gc) continue;
-        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK))
-            return 1;
-    }
-    return 0;
-}
-
-/* ── Select + Triangle shutdown combo ─────────────────────────────────────
-   Hold both for 2 seconds to initiate a clean shutdown.
-   Returns 1 exactly once when the threshold is crossed, 0 otherwise.      */
-int input_shutdown_combo(void) {
-    int held = 0;
-    for (int i = 0; i < num_slots; i++) {
-        SDL_GameController *gc = slots[i].gc;
-        if (!gc) continue;
-        if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
-            SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y))
-            { held = 1; break; }
-    }
-    if (held) {
-        shutdown_combo_held++;
-        if (shutdown_combo_held == SHUTDOWN_HOLD_FRAMES) {
-            shutdown_combo_held = 0;
-            return 1;
-        }
-    } else {
-        shutdown_combo_held = 0;
-    }
-    return 0;
+    return y_cur && !y_prev;
 }

@@ -15,15 +15,8 @@ int  input_btn(int b);
 int  input_btnp(int b);
 int  input_btnr(int b);
 
-/* 1 on the frame triangle is first pressed AND Select is not held. */
+/* 1 on the frame triangle is first pressed — opens/closes the menu. */
 int  input_triangle_tapped(void);
-
-/* 1 if Select (Back) is currently held — used to gate triangle/ESC. */
-int  input_back_held(void);
-
-/* Hold Select + Triangle for 2 seconds to initiate a clean shutdown.
-   Returns 1 the frame the threshold is crossed, 0 every other frame.       */
-int  input_shutdown_combo(void);
 
 /* Hotplug callbacks — call from main.c event loop.
    joystick_idx  : event.cdevice.which from SDL_CONTROLLERDEVICEADDED
