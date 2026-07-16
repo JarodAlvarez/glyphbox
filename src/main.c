@@ -426,34 +426,24 @@ static uint32_t last_tick = 0;
 static void game_loop_tick(void) {
     /* ── Events ── */
     SDL_Event e;
+    int kbd_menu = 0;   /* set by ESC (desktop) or F2 (Pico BTN_B) */
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) running = 0;
         if (e.type == SDL_CONTROLLERDEVICEADDED)
             input_controller_added(e.cdevice.which);
         if (e.type == SDL_CONTROLLERDEVICEREMOVED)
             input_controller_removed(e.cdevice.which);
-        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
-            if (g_state == STATE_STARTUP) {
-                g_state = STATE_SPLASH;
-            } else if (g_state == STATE_RUNNING || g_state == STATE_CART_LOADED) {
-                audio_music(-1);
-                cart_free(g_cart); g_cart = NULL;
-                lua_api_unload();
-                g_state = STATE_SPLASH;
-            } else if (g_state == STATE_SCANNING) {
-                abort_scan();
-                g_state = STATE_SPLASH;
-            } else {
-                running = 0;
-            }
+        if (e.type == SDL_KEYDOWN) {
+            if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_F2)
+                kbd_menu = 1;
         }
     }
 
     /* ── Input ── */
     input_update();
 
-    /* ── Triangle: single menu button — toggles the menu overlay ── */
-    if (input_triangle_tapped()) {
+    /* ── Triangle / BTN_B / keyboard: unified menu button ── */
+    if (input_triangle_tapped() || kbd_menu) {
         if (g_state == STATE_STARTUP) {
             g_state = STATE_SPLASH;       /* skip boot animation */
         } else if (g_state == STATE_SCANNING) {
