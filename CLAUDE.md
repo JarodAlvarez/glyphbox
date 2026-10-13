@@ -244,7 +244,7 @@ for (int i = 0; i < 5; i++)
 renderer_print("GLYPHBOX", 40, 68, 1);
 ```
 
-The boot animation and the splash share these coordinates so the logo does not jump between them. System screens share chrome helpers in `main.c`: `ui_header()` (inverted title bar + logo mark) and `ui_footer()` (button hints). Button hints are drawn with `renderer_button_hint(HINT_ACTION | HINT_MENU, x, y, c)` — the two face buttons side by side (menu left, action right), the one to press filled. Do not label buttons "A"/"B" on system screens; the controller has no markings.
+These are the splash's resting coordinates. The boot animation draws the same logo 14px lower (vertically centred); when it ends, `draw_splash()` slides the logo up over `SPLASH_INTRO_FRAMES` while the copyright and footer rise in from the bottom. The SCAN CARD prompt flashes once at rest. System screens share chrome helpers in `main.c`: `ui_header()` (inverted title bar + logo mark) and `ui_footer()` (button hints). Button hints are drawn with `renderer_button_hint(HINT_ACTION | HINT_MENU, x, y, c)` — the two face buttons side by side (menu left, action right), the one to press filled. Do not label buttons "A"/"B" on system screens; the controller has no markings.
 
 ---
 

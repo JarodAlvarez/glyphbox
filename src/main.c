@@ -271,22 +271,22 @@ static void draw_startup(int f) {
     renderer_cls(0);
 
     if (f >= 6) {
-        renderer_rectf(44, 14, 40, 40, 1);   /* outer ring fill */
-        renderer_rectf(48, 18, 32, 32, 0);   /* outer ring cutout */
+        renderer_rectf(44, 28, 40, 40, 1);   /* outer ring fill */
+        renderer_rectf(48, 32, 32, 32, 0);   /* outer ring cutout */
     }
     if (f >= 11) {
-        renderer_rectf(52, 22, 24, 24, 1);   /* inner ring fill */
-        renderer_rectf(56, 26, 16, 16, 0);   /* inner ring cutout */
+        renderer_rectf(52, 36, 24, 24, 1);   /* inner ring fill */
+        renderer_rectf(56, 40, 16, 16, 0);   /* inner ring cutout */
     }
     if (f >= 16)
-        renderer_rectf(60, 30,  8,  8, 1);   /* centre square */
+        renderer_rectf(60, 44,  8,  8, 1);   /* centre square */
 
     if (f >= 21)
         for (int i = 0; i < 5; i++)
-            renderer_rectf(48 + i * 7, 60, 4, 4, 1);  /* dot row */
+            renderer_rectf(48 + i * 7, 74, 4, 4, 1);  /* dot row */
 
     if (f >= 26)
-        renderer_print("GLYPHBOX", 40, 68, 1);
+        renderer_print("GLYPHBOX", 40, 82, 1);
 
     /* 2-frame white flash the moment the wordmark appears */
     if (f == 26 || f == 27)
@@ -308,49 +308,74 @@ static void ui_header(const char *title) {
     renderer_pset(117, 6, 0);
 }
 
+/* A button hint followed by its label */
+static int ui_hint_width(const char *label) {
+    return HINT_W + 4 + (int)strlen(label) * 6 - 1;
+}
+
+static void ui_hint(int which, const char *label, int x, int y) {
+    renderer_button_hint(which, x, y, 1);
+    renderer_print(label, x + HINT_W + 4, y, 1);
+}
+
 /* Footer rule with a button hint at the left and, optionally, the right */
 static void ui_footer(int lwhich, const char *llabel,
                       int rwhich, const char *rlabel) {
     renderer_rectf(0, 112, 128, 1, 1);
-    renderer_button_hint(lwhich, 4, 117, 1);
-    renderer_print(llabel, 4 + HINT_W + 4, 117, 1);
-    if (rlabel) {
-        int w = HINT_W + 4 + (int)strlen(rlabel) * 6 - 1;
-        renderer_button_hint(rwhich, 124 - w, 117, 1);
-        renderer_print(rlabel, 124 - w + HINT_W + 4, 117, 1);
-    }
+    ui_hint(lwhich, llabel, 4, 117);
+    if (rlabel)
+        ui_hint(rwhich, rlabel, 124 - ui_hint_width(rlabel), 117);
 }
+
+/* Splash intro: after the boot animation the logo slides up from the centre
+   of the screen while the copyright and footer rise in from the bottom.
+   splash_intro counts frames into that move; at SPLASH_INTRO_FRAMES the
+   screen is at rest (also the value when the splash is reached any other way). */
+#define SPLASH_INTRO_FRAMES 12
+#define SPLASH_LOGO_RISE    14      /* boot logo sits this far below the splash logo */
+#define SPLASH_FOOTER_RISE  36      /* copyright + footer start this far down        */
+static int splash_intro = SPLASH_INTRO_FRAMES;
 
 static void draw_splash(void) {
     renderer_cls(0);
+
+    /* Ease-out: remaining travel shrinks with the square of the time left */
+    int left = SPLASH_INTRO_FRAMES - splash_intro;
+    int den  = SPLASH_INTRO_FRAMES * SPLASH_INTRO_FRAMES;
+    int ly   = 14 + SPLASH_LOGO_RISE   * left * left / den;   /* logo top   */
+    int fy   =      SPLASH_FOOTER_RISE * left * left / den;   /* footer dy  */
+    int rest = (left == 0);
+    if (!rest) splash_intro++;
 
     /* ── Logo: 2 rings + centre square ────────────────────────────────────
      * Both rings 4px thick.  Gap between rings: 4px.  Gap to centre: 4px.
      * Centre: 8×8 solid.  Total icon: 40×40px.
      * Each ring = rectf fill (colour 1) + rectf cutout (colour 0).          */
-    renderer_rectf(44, 14, 40, 40, 1);   /* outer ring fill  (40×40)        */
-    renderer_rectf(48, 18, 32, 32, 0);   /* outer ring cutout — 4px ring    */
-    renderer_rectf(52, 22, 24, 24, 1);   /* inner ring fill  (24×24)        */
-    renderer_rectf(56, 26, 16, 16, 0);   /* inner ring cutout — 4px ring    */
-    renderer_rectf(60, 30,  8,  8, 1);   /* centre square    ( 8×8 solid)   */
+    renderer_rectf(44, ly,      40, 40, 1);   /* outer ring fill  (40×40)   */
+    renderer_rectf(48, ly +  4, 32, 32, 0);   /* outer ring cutout          */
+    renderer_rectf(52, ly +  8, 24, 24, 1);   /* inner ring fill  (24×24)   */
+    renderer_rectf(56, ly + 12, 16, 16, 0);   /* inner ring cutout          */
+    renderer_rectf(60, ly + 16,  8,  8, 1);   /* centre square    ( 8×8)    */
 
     /* ── Dot separator: 5 × 4px dots, aligned with outer ring inner edge ── */
     /* Outer ring cutout spans x=48..79 (32px). 5 dots × 4px + 4 gaps × 3px = 32px. */
     for (int i = 0; i < 5; i++)
-        renderer_rectf(48 + i * 7, 60, 4, 4, 1);
+        renderer_rectf(48 + i * 7, ly + 46, 4, 4, 1);
 
     /* ── Wordmark ── */
-    renderer_print("GLYPHBOX", 40, 68, 1);
+    renderer_print("GLYPHBOX", 40, ly + 54, 1);
 
     /* ── Copyright ── */
-    renderer_print("(C) Gureedo 2026", 16, 94, 1);
+    renderer_print("(C) Gureedo 2026", 16, 94 + fy, 1);
 
-    /* ── Prompt ── */
+    /* ── Footer: the scan prompt flashes once everything is at rest ── */
+    int flash_on = !rest || (frame_counter % 30) < 15;
+    renderer_rectf(0, 112 + fy, 128, 1, 1);
 #ifdef PLATFORM_WEB
-    renderer_rectf(0, 112, 128, 1, 1);
-    renderer_print("TAP TO SCAN CARD", 16, 117, 1);
+    if (flash_on) renderer_print("TAP TO SCAN CARD", 16, 117 + fy, 1);
 #else
-    ui_footer(HINT_ACTION, "SCAN CARD", HINT_MENU, "MENU");
+    if (flash_on) ui_hint(HINT_ACTION, "SCAN CARD", 4, 117 + fy);
+    ui_hint(HINT_MENU, "MENU", 124 - ui_hint_width("MENU"), 117 + fy);
 #endif
 }
 
@@ -718,8 +743,10 @@ static void game_loop_tick(void) {
         startup_frame++;
         /* Transition to splash once chime finishes (and we've played at least
            30 frames so the logo is fully visible before cutting away)        */
-        if (!audio_startup_active() && startup_frame > 30)
+        if (!audio_startup_active() && startup_frame > 30) {
+            splash_intro = 0;             /* slide the logo up into place */
             g_state = STATE_SPLASH;
+        }
     }
     else if (g_state == STATE_SPLASH) {
         draw_splash();
