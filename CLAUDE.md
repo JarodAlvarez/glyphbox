@@ -225,24 +225,26 @@ After `audio_startup_active()` returns false and `startup_frame > 30`, transitio
 All logo drawing is at 128×128 resolution. Logo is centred horizontally. Key coordinates:
 
 ```c
-// Outer ring (40×40, top-left at 44,28)
-renderer_rectf(44, 28, 40, 40, 1);
-renderer_rectf(48, 32, 32, 32, 0);   // 4px thick
+// Outer ring (40×40, top-left at 44,14)
+renderer_rectf(44, 14, 40, 40, 1);
+renderer_rectf(48, 18, 32, 32, 0);   // 4px thick
 
-// Inner ring (24×24, top-left at 52,36)
-renderer_rectf(52, 36, 24, 24, 1);
-renderer_rectf(56, 40, 16, 16, 0);   // 4px thick
+// Inner ring (24×24, top-left at 52,22)
+renderer_rectf(52, 22, 24, 24, 1);
+renderer_rectf(56, 26, 16, 16, 0);   // 4px thick
 
 // Centre square (8×8)
-renderer_rectf(60, 44,  8,  8, 1);
+renderer_rectf(60, 30,  8,  8, 1);
 
-// 5 dots: 4×4px, x=44,52,60,68,76 (step=8), y=74
+// 5 dots: 4×4px, x=48,55,62,69,76 (step=7), y=60
 for (int i = 0; i < 5; i++)
-    renderer_rectf(44 + i * 8, 74, 4, 4, 1);
+    renderer_rectf(48 + i * 7, 60, 4, 4, 1);
 
 // Wordmark
-renderer_print("GLYPHBOX", 40, 82, 1);
+renderer_print("GLYPHBOX", 40, 68, 1);
 ```
+
+The boot animation and the splash share these coordinates so the logo does not jump between them. System screens share chrome helpers in `main.c`: `ui_header()` (inverted title bar + logo mark) and `ui_footer()` (button hints). Button hints are drawn with `renderer_button_hint(HINT_ACTION | HINT_MENU, x, y, c)` — the two face buttons side by side (menu left, action right), the one to press filled. Do not label buttons "A"/"B" on system screens; the controller has no markings.
 
 ---
 

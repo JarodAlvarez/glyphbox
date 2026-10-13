@@ -17,6 +17,15 @@ void renderer_circf(int x, int y, int r, int c);
 void renderer_spr(int id, int x, int y, int fx, int fy);
 void renderer_map(int cx, int cy, int x, int y, int w, int h);
 void renderer_print(const char *str, int x, int y, int c);
+void renderer_print_scaled(const char *str, int x, int y, int c, int scale);
+
+/* Button hint: the controller's two face buttons drawn side by side
+   (menu left, action right) with the one to press filled in.  7px tall, so
+   it lines up with a row of text at the same y. */
+#define HINT_ACTION 0
+#define HINT_MENU   1
+#define HINT_W      15
+void renderer_button_hint(int which, int x, int y, int c);
 void renderer_invert(void);
 void renderer_set_sprites(const uint8_t *data);
 void renderer_set_tilemap(const uint8_t *data);

@@ -271,76 +271,119 @@ static void draw_startup(int f) {
     renderer_cls(0);
 
     if (f >= 6) {
-        renderer_rectf(44, 28, 40, 40, 1);   /* outer ring fill */
-        renderer_rectf(48, 32, 32, 32, 0);   /* outer ring cutout */
+        renderer_rectf(44, 14, 40, 40, 1);   /* outer ring fill */
+        renderer_rectf(48, 18, 32, 32, 0);   /* outer ring cutout */
     }
     if (f >= 11) {
-        renderer_rectf(52, 36, 24, 24, 1);   /* inner ring fill */
-        renderer_rectf(56, 40, 16, 16, 0);   /* inner ring cutout */
+        renderer_rectf(52, 22, 24, 24, 1);   /* inner ring fill */
+        renderer_rectf(56, 26, 16, 16, 0);   /* inner ring cutout */
     }
     if (f >= 16)
-        renderer_rectf(60, 44,  8,  8, 1);   /* centre square */
+        renderer_rectf(60, 30,  8,  8, 1);   /* centre square */
 
     if (f >= 21)
         for (int i = 0; i < 5; i++)
-            renderer_rectf(48 + i * 7, 74, 4, 4, 1);  /* dot row */
+            renderer_rectf(48 + i * 7, 60, 4, 4, 1);  /* dot row */
 
     if (f >= 26)
-        renderer_print("GLYPHBOX", 40, 82, 1);
+        renderer_print("GLYPHBOX", 40, 68, 1);
 
     /* 2-frame white flash the moment the wordmark appears */
     if (f == 26 || f == 27)
         renderer_invert();
 }
 
+/* ── Shared UI chrome ────────────────────────────────────────────────────── */
+
+static void ui_print_centred(const char *str, int y, int c) {
+    renderer_print(str, (128 - ((int)strlen(str) * 6 - 1)) / 2, y, c);
+}
+
+/* Inverted title bar with the nested-squares logo mark at the right */
+static void ui_header(const char *title) {
+    renderer_rectf(0, 0, 128, 13, 1);
+    renderer_print(title, 6, 3, 0);
+    renderer_rect(113, 2, 9, 9, 0);
+    renderer_rect(115, 4, 5, 5, 0);
+    renderer_pset(117, 6, 0);
+}
+
+/* Footer rule with a button hint at the left and, optionally, the right */
+static void ui_footer(int lwhich, const char *llabel,
+                      int rwhich, const char *rlabel) {
+    renderer_rectf(0, 112, 128, 1, 1);
+    renderer_button_hint(lwhich, 4, 117, 1);
+    renderer_print(llabel, 4 + HINT_W + 4, 117, 1);
+    if (rlabel) {
+        int w = HINT_W + 4 + (int)strlen(rlabel) * 6 - 1;
+        renderer_button_hint(rwhich, 124 - w, 117, 1);
+        renderer_print(rlabel, 124 - w + HINT_W + 4, 117, 1);
+    }
+}
+
 static void draw_splash(void) {
     renderer_cls(0);
 
-    /* ── Logo: 2 rings + centre square, centred at (64, 48) ───────────────
+    /* ── Logo: 2 rings + centre square ────────────────────────────────────
      * Both rings 4px thick.  Gap between rings: 4px.  Gap to centre: 4px.
      * Centre: 8×8 solid.  Total icon: 40×40px.
      * Each ring = rectf fill (colour 1) + rectf cutout (colour 0).          */
-    renderer_rectf(44, 28, 40, 40, 1);   /* outer ring fill  (40×40)        */
-    renderer_rectf(48, 32, 32, 32, 0);   /* outer ring cutout — 4px ring    */
-    renderer_rectf(52, 36, 24, 24, 1);   /* inner ring fill  (24×24)        */
-    renderer_rectf(56, 40, 16, 16, 0);   /* inner ring cutout — 4px ring    */
-    renderer_rectf(60, 44,  8,  8, 1);   /* centre square    ( 8×8 solid)   */
+    renderer_rectf(44, 14, 40, 40, 1);   /* outer ring fill  (40×40)        */
+    renderer_rectf(48, 18, 32, 32, 0);   /* outer ring cutout — 4px ring    */
+    renderer_rectf(52, 22, 24, 24, 1);   /* inner ring fill  (24×24)        */
+    renderer_rectf(56, 26, 16, 16, 0);   /* inner ring cutout — 4px ring    */
+    renderer_rectf(60, 30,  8,  8, 1);   /* centre square    ( 8×8 solid)   */
 
     /* ── Dot separator: 5 × 4px dots, aligned with outer ring inner edge ── */
     /* Outer ring cutout spans x=48..79 (32px). 5 dots × 4px + 4 gaps × 3px = 32px. */
     for (int i = 0; i < 5; i++)
-        renderer_rectf(48 + i * 7, 74, 4, 4, 1);
+        renderer_rectf(48 + i * 7, 60, 4, 4, 1);
 
     /* ── Wordmark ── */
-    renderer_print("GLYPHBOX", 40, 82, 1);
+    renderer_print("GLYPHBOX", 40, 68, 1);
+
+    /* ── Copyright ── */
+    renderer_print("(C) Gureedo 2026", 16, 94, 1);
 
     /* ── Prompt ── */
 #ifdef PLATFORM_WEB
-    renderer_print("TAP TO SCAN CARD", 16, 96, 1);
+    renderer_rectf(0, 112, 128, 1, 1);
+    renderer_print("TAP TO SCAN CARD", 16, 117, 1);
 #else
-    //renderer_print("INSERT CARTRIDGE", 16, 96, 1);
+    ui_footer(HINT_ACTION, "SCAN CARD", HINT_MENU, "MENU");
 #endif
-    if ((frame_counter % 30) >= 15)
-        renderer_print("A: SCAN CARD", 28, 108, 1);
-
-    /* ── Copyright ── */
-    renderer_print("(C) Gureedo 2026", 16, 118, 1);
 }
 
 static void draw_cart_loaded(Cart *c) {
+    /* Frames since this screen appeared: restart whenever a frame was drawn
+       by something else in between.                                        */
+    static uint32_t prev_frame = 0;
+    static int      t          = 0;
+    if (frame_counter != prev_frame + 1) t = 0;
+    prev_frame = frame_counter;
+    t++;
+
     renderer_cls(0);
-    renderer_rect(2, 2, 124, 124, 1);
-    renderer_print("GLYPHBOX", 40, 8, 1);
-    renderer_rectf(4, 18, 120, 1, 1);
+    ui_header("CART LOADED");
+
     if (c && c->title[0]) {
         int len = (int)strlen(c->title);
-        int tx  = (128 - len * 6) / 2;
-        renderer_print(c->title, tx < 4 ? 4 : tx, 42, 1);
+        if (len <= 10)   /* fits at double size */
+            renderer_print_scaled(c->title, (128 - (len * 12 - 2)) / 2, 44, 1, 2);
+        else
+            ui_print_centred(c->title, 48, 1);
     }
-    renderer_rectf(4, 54, 120, 1, 1);
-    renderer_print("CART LOADED", 31, 64, 1);
-    static const char * const dots[3] = { ".  ", ".. ", "..." };
-    renderer_print(dots[(frame_counter / 6) % 3], 55, 80, 1);
+    if (c && c->author[0]) {
+        char by[16];
+        snprintf(by, sizeof by, "BY %s", c->author);
+        ui_print_centred(by, 66, 1);
+    }
+
+    /* Logo dot row fills while the jingle plays */
+    for (int i = 0; i < 5; i++) {
+        if (t > 6 + i * 9) renderer_rectf(48 + i * 7, 90, 4, 4, 1);
+        else               renderer_rectf(49 + i * 7, 91, 2, 2, 1);
+    }
 }
 
 /* Populate menu_rows[] based on the state the menu was opened from. */
@@ -392,27 +435,32 @@ static const char *menu_row_label(MenuAction a) {
 
 static void draw_menu(void) {
     renderer_cls(0);
-    renderer_rect(2, 2, 124, 124, 1);
-    renderer_print("MENU", 48, 8, 1);
-    renderer_rectf(4, 18, 120, 1, 1);
+    ui_header("MENU");
 
-    int y = 30;
+    int y = 22;
     for (int i = 0; i < menu_row_count; i++) {
-        MenuAction a = menu_rows[i];
-        renderer_print(menu_cursor == i ? ">" : " ", 6, y, 1);
-        renderer_print(menu_row_label(a), 14, y, 1);
+        MenuAction a   = menu_rows[i];
+        int        sel = (menu_cursor == i);
+        int        h   = (a == MENU_VOLUME) ? 26 : 13;
+        int        ink = sel ? 0 : 1;
+
+        /* Selected row is a solid bar with the text knocked out */
+        if (sel) renderer_rectf(4, y - 3, 120, h, 1);
+        renderer_print(menu_row_label(a), 10, y, ink);
 
         if (a == MENU_VOLUME) {
-            int bar_x = 14, bar_y = y + 10, bar_w = 100, bar_h = 6;
-            renderer_rect(bar_x, bar_y, bar_w, bar_h, 1);
             int steps = (int)(audio_get_volume() * 10.0f + 0.5f);  /* 0–10 */
-            for (int s = 0; s < steps; s++)
-                renderer_rectf(bar_x + 2 + s * 9, bar_y + 2, 7, bar_h - 4, 1);
-            y += 26;
+            for (int s = 0; s < 10; s++) {
+                if (s < steps) renderer_rectf(10 + s * 11, y + 11, 9, 7, ink);
+                else           renderer_rect (10 + s * 11, y + 11, 9, 7, ink);
+            }
+            y += 32;
         } else {
             y += 16;
         }
     }
+
+    ui_footer(HINT_ACTION, "OK", HINT_MENU, "BACK");
 }
 
 static void draw_splash_scan(void) {

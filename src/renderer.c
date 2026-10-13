@@ -165,6 +165,40 @@ void renderer_print(const char *str, int x, int y, int c) {
     }
 }
 
+void renderer_print_scaled(const char *str, int x, int y, int c, int scale) {
+    int cx = x;
+    for (int i = 0; str[i]; i++) {
+        unsigned char ch = (unsigned char)str[i];
+        if (ch >= 32 && ch <= 126) {
+            int gi = ch - 32;
+            for (int row = 0; row < 7; row++)
+                for (int col = 0; col < 5; col++)
+                    if (font_data[gi][row][col])
+                        renderer_rectf(cx + col * scale, y + row * scale,
+                                       scale, scale, c);
+        }
+        cx += 6 * scale;
+    }
+}
+
+void renderer_button_hint(int which, int x, int y, int c) {
+    /* 7×7 disc: row spans, inset from the left edge */
+    static const int inset[7] = { 2, 1, 0, 0, 0, 1, 2 };
+    for (int b = 0; b < 2; b++) {
+        int bx     = x + b * 8;
+        int filled = (b == 0) ? (which == HINT_MENU) : (which == HINT_ACTION);
+        for (int row = 0; row < 7; row++) {
+            int in = inset[row], w = 7 - 2 * in;
+            if (filled || row == 0 || row == 6) {
+                renderer_rectf(bx + in, y + row, w, 1, c);
+            } else {
+                renderer_pset(bx + in,         y + row, c);
+                renderer_pset(bx + in + w - 1, y + row, c);
+            }
+        }
+    }
+}
+
 void renderer_invert(void) {
     for (int i = 0; i < FB_BYTES; i++) fb[i] ^= 0xFF;
 }
