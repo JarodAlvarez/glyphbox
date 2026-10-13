@@ -51,10 +51,12 @@ static ConsoleState  g_state      = STATE_STARTUP;
    Triangle is the single menu button: opens/closes an overlay with volume
    control, exit-to-splash, and shutdown.  Available from any state except
    STATE_STARTUP (triangle there just skips the boot animation, as before). */
-typedef enum { MENU_VOLUME, MENU_EXIT, MENU_SHUTDOWN } MenuAction;
+typedef enum { MENU_VOLUME, MENU_EXIT, MENU_SHUTDOWN, MENU_CONSOLE } MenuAction;
 static int        menu_active   = 0;
 static int        menu_cursor   = 0;
-static MenuAction menu_rows[3];
+static MenuAction menu_rows[4];
+static int        menu_debug    = 0;   /* hidden EXIT TO CONSOLE row unlocked */
+static int        menu_seq_pos  = 0;   /* progress through the unlock sequence */
 static int        menu_row_count = 0;
 static int           startup_frame = 0;
 
@@ -337,6 +339,8 @@ static void draw_cart_loaded(Cart *c) {
 static void menu_open(void) {
     menu_cursor    = 0;
     menu_row_count = 0;
+    menu_seq_pos   = 0;
+    menu_debug     = 0;
     menu_rows[menu_row_count++] = MENU_VOLUME;
     if (g_state == STATE_RUNNING)
         menu_rows[menu_row_count++] = MENU_EXIT;
@@ -346,11 +350,34 @@ static void menu_open(void) {
     menu_active = 1;
 }
 
+#ifndef PLATFORM_WEB
+/* Hidden debug unlock: with the menu open, enter U U D D L R.  Reveals an
+   EXIT TO CONSOLE row that quits cleanly so systemd does not restart us. */
+static void menu_debug_check(void) {
+    static const int seq[6] = { BTN_U, BTN_U, BTN_D, BTN_D, BTN_L, BTN_R };
+    if (menu_debug) return;
+    int pressed = -1;
+    for (int b = BTN_U; b <= BTN_R; b++)
+        if (input_btnp(b)) { pressed = b; break; }
+    if (pressed < 0) return;
+    if (pressed == seq[menu_seq_pos]) {
+        if (++menu_seq_pos == 6) {
+            menu_debug = 1;
+            menu_rows[menu_row_count++] = MENU_CONSOLE;
+            menu_cursor = menu_row_count - 1;
+        }
+    } else {
+        menu_seq_pos = (pressed == seq[0]) ? 1 : 0;
+    }
+}
+#endif
+
 static const char *menu_row_label(MenuAction a) {
     switch (a) {
         case MENU_VOLUME:   return "VOLUME";
         case MENU_EXIT:     return "EXIT GAME";
         case MENU_SHUTDOWN: return "SHUTDOWN";
+        case MENU_CONSOLE:  return "EXIT TO CONSOLE";
     }
     return "";
 }
@@ -463,6 +490,9 @@ static void game_loop_tick(void) {
 
     /* ── State machine ── */
     if (menu_active) {
+#ifndef PLATFORM_WEB
+        menu_debug_check();
+#endif
         if (input_btnp(BTN_U))
             menu_cursor = (menu_cursor - 1 + menu_row_count) % menu_row_count;
         if (input_btnp(BTN_D))
@@ -494,6 +524,14 @@ static void game_loop_tick(void) {
                 SDL_Delay(1500);
                 system("sudo shutdown -h now");
                 running = 0;
+            }
+            else if (sel == MENU_CONSOLE) {
+                renderer_cls(0);
+                renderer_print("EXITING", 44, 60, 1);
+                renderer_frame();
+                SDL_RenderPresent(sdl_renderer);
+                SDL_Delay(500);
+                running = 0;   /* clean exit: systemd Restart=on-failure won't relaunch */
             }
 #endif
         }
