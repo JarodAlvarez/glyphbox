@@ -24,6 +24,10 @@ int  audio_jingle_active(void);
 void audio_startup_play(void);
 int  audio_startup_active(void);
 
+/* Scan chime — short two-note blip when one card of a set is read.
+   Uses the same dedicated channel; yields to the jingle. */
+void audio_scan_ok_play(void);
+
 /* Master volume — range 0.0 (silent) to 1.0 (full).  Default 1.0.
    Steps of 0.1 via the controller Start/Select buttons. */
 void  audio_set_volume(float v);

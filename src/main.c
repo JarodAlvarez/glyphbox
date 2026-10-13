@@ -64,20 +64,34 @@ static int           startup_frame = 0;
 #ifndef PLATFORM_WEB
 
 #define CAM_FIFO_PATH  "/tmp/glyphbox_cam.fifo"
-#define CAM_W          128
-#define CAM_H          128
-#define CAM_HEADER     8
-#define CAM_FRAME_SZ   (CAM_HEADER + CAM_W * CAM_H)
+#define SCAN_PKT_SZ    10     /* 'GSCN' pos total cur rsvd mask(uint16 LE) */
+#define SCAN_POS_NONE  255    /* scanner has no view of the card slot      */
+
+/* Scan screen geometry: a 54×68 card slides down between two rails */
+#define SCAN_CARD_X      37
+#define SCAN_CARD_W      54
+#define SCAN_CARD_H      68
+#define SCAN_CARD_OUT_Y  (-56)   /* fully out of view (clipped at y=14)      */
+#define SCAN_CARD_IN_Y   30      /* seated against the stop                  */
 
 static pid_t        scan_pid      = -1;
 static const char   scan_out[]   = "/tmp/glyphbox_scan.gbcart";
 static char         decoder_path[PATH_MAX];
 
 static int          cam_fifo_fd   = -1;
-static SDL_Texture *cam_texture   = NULL;
-static uint8_t      cam_recv[CAM_FRAME_SZ * 2];
+static uint8_t      cam_recv[SCAN_PKT_SZ * 16];
 static int          cam_recv_used = 0;
-static int          cam_has_frame = 0;
+
+/* Latest status from the scanner, plus animation state for draw_scan() */
+static int          scan_ready    = 0;    /* first packet seen: camera is up */
+static int          scan_pos      = SCAN_POS_NONE;
+static int          scan_total    = 0;
+static int          scan_cur      = 255;
+static unsigned     scan_mask     = 0;
+static int          scan_card_y   = 0;    /* eased on-screen card position   */
+static int          scan_ok_card  = 0;    /* card number just captured       */
+static int          scan_ok_hold  = 0;    /* frames left of the "OK" banner  */
+static uint32_t     scan_frame    = 0;
 
 static void find_decoder_path(const char *argv0) {
     char tmp[PATH_MAX];
@@ -92,42 +106,39 @@ static void find_decoder_path(const char *argv0) {
     snprintf(decoder_path, PATH_MAX, "%s/../tools/qr-decode.py", dir);
 }
 
-static void cam_try_process_frames(void) {
-    while (cam_recv_used >= CAM_HEADER) {
-        int magic = -1;
-        for (int i = 0; i <= cam_recv_used - 4; i++) {
-            if (cam_recv[i]   == 'G' && cam_recv[i+1] == 'C' &&
-                cam_recv[i+2] == 'A' && cam_recv[i+3] == 'M') {
-                magic = i; break;
-            }
-        }
-        if (magic < 0) {
-            int keep = (cam_recv_used >= 3) ? 3 : cam_recv_used;
-            memmove(cam_recv, cam_recv + cam_recv_used - keep, (size_t)keep);
-            cam_recv_used = keep;
-            return;
-        }
-        if (magic > 0) {
-            memmove(cam_recv, cam_recv + magic, (size_t)(cam_recv_used - magic));
-            cam_recv_used -= magic;
-        }
-        if (cam_recv_used < CAM_FRAME_SZ) return;
+static void scan_read_status(void) {
+    if (cam_fifo_fd < 0) return;
+    for (;;) {
+        ssize_t n = read(cam_fifo_fd, cam_recv + cam_recv_used,
+                         sizeof(cam_recv) - (size_t)cam_recv_used);
+        if (n <= 0) break;
+        cam_recv_used += (int)n;
 
-        uint16_t fw = (uint16_t)(cam_recv[4] | (cam_recv[5] << 8));
-        uint16_t fh = (uint16_t)(cam_recv[6] | (cam_recv[7] << 8));
-        if (fw == CAM_W && fh == CAM_H && cam_texture) {
-            static uint32_t pixels[CAM_W * CAM_H];
-            const uint8_t *src = cam_recv + CAM_HEADER;
-            for (int i = 0; i < CAM_W * CAM_H; i++) {
-                uint32_t y = src[i];
-                pixels[i] = (y << 24) | (y << 16) | (y << 8) | 0xFF;
+        int i = 0;
+        while (cam_recv_used - i >= SCAN_PKT_SZ) {
+            const uint8_t *p = cam_recv + i;
+            if (p[0] != 'G' || p[1] != 'S' || p[2] != 'C' || p[3] != 'N') {
+                i++;                       /* resync on the magic */
+                continue;
             }
-            SDL_UpdateTexture(cam_texture, NULL, pixels, CAM_W * 4);
-            cam_has_frame = 1;
+            unsigned mask = (unsigned)(p[8] | (p[9] << 8));
+            unsigned fresh = mask & ~scan_mask;
+            if (fresh) {
+                int idx = 0;
+                while (!(fresh & (1u << idx))) idx++;
+                scan_ok_card = idx + 1;
+                scan_ok_hold = 45;
+                audio_scan_ok_play();
+            }
+            scan_pos   = p[4];
+            scan_total = p[5];
+            scan_cur   = p[6];
+            scan_mask  = mask;
+            scan_ready = 1;
+            i += SCAN_PKT_SZ;
         }
-        memmove(cam_recv, cam_recv + CAM_FRAME_SZ,
-                (size_t)(cam_recv_used - CAM_FRAME_SZ));
-        cam_recv_used -= CAM_FRAME_SZ;
+        memmove(cam_recv, cam_recv + i, (size_t)(cam_recv_used - i));
+        cam_recv_used -= i;
     }
 }
 
@@ -136,15 +147,14 @@ static void start_webcam_scan(void) {
     mkfifo(CAM_FIFO_PATH, 0600);
     cam_fifo_fd   = open(CAM_FIFO_PATH, O_RDONLY | O_NONBLOCK);
     cam_recv_used = 0;
-    cam_has_frame = 0;
-
-    if (!cam_texture) {
-        cam_texture = SDL_CreateTexture(sdl_renderer,
-            SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
-            CAM_W, CAM_H);
-        if (cam_texture)
-            SDL_SetTextureBlendMode(cam_texture, SDL_BLENDMODE_NONE);
-    }
+    scan_ready    = 0;
+    scan_pos      = SCAN_POS_NONE;
+    scan_total    = 0;
+    scan_cur      = 255;
+    scan_mask     = 0;
+    scan_card_y   = SCAN_CARD_OUT_Y;
+    scan_ok_hold  = 0;
+    scan_frame    = 0;
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -169,6 +179,7 @@ static void start_webcam_scan(void) {
 }
 
 static int poll_scan(void) {
+    scan_read_status();   /* also covers mid-game scans driven from Lua */
     if (scan_pid < 0) return -1;
     int status;
     pid_t r = waitpid(scan_pid, &status, WNOHANG);
@@ -186,14 +197,11 @@ static void abort_scan(void) {
     }
     if (cam_fifo_fd >= 0) { close(cam_fifo_fd); cam_fifo_fd = -1; }
     unlink(CAM_FIFO_PATH);
-    if (cam_texture) { SDL_DestroyTexture(cam_texture); cam_texture = NULL; }
     cam_recv_used = 0;
-    cam_has_frame = 0;
 }
 
 #else  /* PLATFORM_WEB — stubs so the rest of the file compiles cleanly */
 
-static int  cam_has_frame = 0;
 static void start_webcam_scan(void) {
     /* Signal JS to activate its camera scanner overlay */
     EM_ASM( GlyphboxScanner.start(); );
@@ -422,6 +430,125 @@ static void draw_splash_scan(void) {
 #endif
 }
 
+#ifndef PLATFORM_WEB
+/* Native scan screen: a drawn card that follows the real one into the slot.
+   Everything goes through the 1-bit framebuffer; the scanner only sends
+   status (see scan_read_status).                                           */
+static void scan_print_centred(const char *str, int y) {
+    renderer_print(str, (128 - (int)strlen(str) * 6) / 2 + 1, y, 1);
+}
+
+static void draw_scan_card(int cy) {
+    const int cx = SCAN_CARD_X;
+    renderer_rectf(cx, cy, SCAN_CARD_W, SCAN_CARD_H, 1);
+    renderer_rectf(cx + 2, cy, 6, SCAN_CARD_H, 0);        /* title strip   */
+
+    /* Aztec block: scattered modules around a bullseye */
+    int bx = cx + 12, by = cy + 6;
+    for (int y = 0; y < 18; y++)
+        for (int x = 0; x < 18; x++)
+            if ((x * 7 + y * 13 + x * y) % 5 < 2)
+                renderer_rectf(bx + x * 2, by + y * 2, 2, 2, 0);
+    renderer_rectf(bx + 11, by + 11, 14, 14, 1);
+    renderer_rectf(bx + 12, by + 12, 12, 12, 0);
+    renderer_rectf(bx + 14, by + 14,  8,  8, 1);
+    renderer_rectf(bx + 16, by + 16,  4,  4, 0);
+
+    /* Insert arrow on the leading edge */
+    for (int k = 0; k < 4; k++)
+        renderer_rectf(cx + 24 + k, cy + 54 + k, 8 - 2 * k, 1, 0);
+}
+
+static void draw_scan(void) {
+    renderer_cls(0);
+
+    /* ── Where the card should be ── */
+    int target = SCAN_CARD_OUT_Y;
+    if (scan_pos == SCAN_POS_NONE) {
+        /* No slot view (desktop webcam): loop an insert hint, or hold the
+           card seated while one is being read.                            */
+        int t = (int)(scan_frame % 75);
+        int hint = SCAN_CARD_OUT_Y +
+                   (SCAN_CARD_IN_Y - SCAN_CARD_OUT_Y) * (t < 45 ? t : 45) / 45;
+        scan_card_y = (scan_cur != 255 || scan_ok_hold > 0) ? SCAN_CARD_IN_Y : hint;
+        target = scan_card_y;
+    } else if (scan_ready) {
+        target = SCAN_CARD_OUT_Y +
+                 (SCAN_CARD_IN_Y - SCAN_CARD_OUT_Y) * scan_pos / 100;
+    }
+    /* Ease toward the target so sparse scanner updates still move smoothly */
+    int d = target - scan_card_y;
+    if (d > 0)      scan_card_y += (d + 2) / 3;
+    else if (d < 0) scan_card_y -= (-d + 2) / 3;
+
+    /* ── Seat outline, card, then mask everything above the slot mouth ── */
+    for (int k = 0; k < SCAN_CARD_W; k += 4)
+        renderer_rectf(SCAN_CARD_X + k, SCAN_CARD_IN_Y, 2, 1, 1);
+    for (int k = 0; k < SCAN_CARD_H; k += 4) {
+        renderer_rectf(SCAN_CARD_X, SCAN_CARD_IN_Y + k, 1, 2, 1);
+        renderer_rectf(SCAN_CARD_X + SCAN_CARD_W - 1, SCAN_CARD_IN_Y + k, 1, 2, 1);
+    }
+    draw_scan_card(scan_card_y);
+    renderer_rectf(0, 0, 128, 14, 0);
+
+    renderer_rectf(30, 14, 3, 86, 1);     /* left rail  */
+    renderer_rectf(95, 14, 3, 86, 1);     /* right rail */
+    renderer_rectf(26, 100, 76, 3, 1);    /* stop       */
+
+    /* ── Status line ── */
+    int seated  = (scan_pos != SCAN_POS_NONE && scan_pos >= 90);
+    int partial = (scan_pos != SCAN_POS_NONE && scan_pos >= 8 && !seated);
+    int known   = (scan_cur < 16 && (scan_mask & (1u << scan_cur)));
+    char msg[24];
+    if (!scan_ready) {
+        snprintf(msg, sizeof msg, "CAMERA STARTING");
+    } else if (scan_ok_hold > 0) {
+        if (scan_total) snprintf(msg, sizeof msg, "CARD %d/%d OK", scan_ok_card, scan_total);
+        else            snprintf(msg, sizeof msg, "CARD %d OK", scan_ok_card);
+    } else if (known && scan_total) {
+        snprintf(msg, sizeof msg, "CARD %d/%d OK", scan_cur + 1, scan_total);
+    } else if (seated) {
+        snprintf(msg, sizeof msg, "READING%.*s", (int)(scan_frame / 10 % 4), "...");
+    } else if (partial) {
+        snprintf(msg, sizeof msg, "PUSH CARD IN");
+    } else if (scan_mask) {
+        snprintf(msg, sizeof msg, "INSERT NEXT CARD");
+    } else {
+        snprintf(msg, sizeof msg, "INSERT CARD");
+    }
+    if (msg[0] == 'R') renderer_print(msg, 38, 3, 1);   /* fixed so dots don't jitter */
+    else               scan_print_centred(msg, 3);
+
+    /* ── Pip row: one per card (filled = read), or a loader while waiting ── */
+    if (scan_total > 0) {
+        int n  = scan_total > 15 ? 15 : scan_total;
+        int x0 = (128 - (n * 8 - 4)) / 2;
+        for (int i = 0; i < n; i++) {
+            int x = x0 + i * 8;
+            if (scan_mask & (1u << i)) {
+                renderer_rectf(x, 119, 4, 4, 1);
+            } else if (i == scan_cur) {
+                renderer_rectf(x, 119, 4, 4, 1);
+                renderer_rectf(x + 1, 120, 2, 2, 0);
+            } else {
+                renderer_rectf(x + 1, 120, 2, 2, 1);
+            }
+        }
+    } else if (!scan_ready) {
+        int lit = (int)(scan_frame / 6 % 5);
+        for (int i = 0; i < 5; i++) {
+            if (i == lit) renderer_rectf(46 + i * 8, 119, 4, 4, 1);
+            else          renderer_rectf(47 + i * 8, 120, 2, 2, 1);
+        }
+    }
+
+    /* Two-frame flash as a card is captured, like the boot wordmark */
+    if (scan_ok_hold > 43) renderer_invert();
+    if (scan_ok_hold > 0) scan_ok_hold--;
+    scan_frame++;
+}
+#endif
+
 /* ── Volume preference — persisted to ~/.glyphbox/volume ─────────────────── */
 static void volume_pref_load(void) {
     const char *home = getenv("HOME");
@@ -555,20 +682,8 @@ static void game_loop_tick(void) {
     }
     else if (g_state == STATE_SCANNING) {
 #ifndef PLATFORM_WEB
-        /* Native: drain FIFO for camera preview frames */
-        if (cam_fifo_fd >= 0) {
-            uint8_t tmp[CAM_FRAME_SZ];
-            for (;;) {
-                ssize_t n = read(cam_fifo_fd, tmp, sizeof(tmp));
-                if (n <= 0) break;
-                if (cam_recv_used + (int)n > (int)sizeof(cam_recv))
-                    cam_recv_used = 0;
-                memcpy(cam_recv + cam_recv_used, tmp, (size_t)n);
-                cam_recv_used += (int)n;
-                cam_try_process_frames();
-            }
-        }
-        if (!cam_has_frame) draw_splash_scan();
+        scan_read_status();
+        draw_scan();
 
         int result = poll_scan();
         if (result == 1) {
@@ -611,12 +726,7 @@ static void game_loop_tick(void) {
 
     /* ── Render ── */
     SDL_RenderClear(sdl_renderer);
-#ifndef PLATFORM_WEB
-    if (!menu_active && g_state == STATE_SCANNING && cam_has_frame)
-        SDL_RenderCopy(sdl_renderer, cam_texture, NULL, NULL);
-    else
-#endif
-        renderer_frame();
+    renderer_frame();
     SDL_RenderPresent(sdl_renderer);
 
     frame_counter++;

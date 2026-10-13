@@ -34,6 +34,7 @@ import os
 import sys
 from pathlib import Path
 import struct
+import time
 
 def _card_label(idx: int, total: int) -> str:
     """Return a human-readable card label, e.g. '3/8'."""
@@ -482,103 +483,73 @@ def _open_webcam_camera(device: int, force_pi: bool = False) -> tuple:
         return _open_opencv_camera(device)
 
 
-def _send_cam_frame(pil, halves: dict, cam_fd: int) -> bool:
+# Card window inside the Pi camera frame, as fractions of (width, height):
+# x0, y0, x1, y1.  Measured from the console case's fixed camera view — the
+# strip between the slot rails, above the LED shelf.  The card enters at the
+# top of this window and is seated when its leading edge reaches the bottom.
+_SLOT_ROI = (0.354, 0.056, 0.656, 0.722)
+
+
+def _card_position(pil) -> int:
     """
-    Downscale pil to 128×128 grayscale, draw a single-code target box and
-    card-progress indicators, then write a GCAM-framed frame to cam_fd
-    (non-blocking).
+    Estimate how far the card is inserted, 0 (slot empty) … 100 (seated).
 
-    Multi-card scanning UI:
-      • Large centred rectangle — align the REAR of the current card here.
-      • Row of small squares at the bottom — one per card in the set.
-        Filled square = captured, outline = still needed.
-      • Progress text above the target box: "CARD 2/4 SCANNED" etc.
+    The empty slot backdrop is smooth; any row covered by a card has a hard
+    edge in it (title strip, Aztec modules).  The insertion depth is the
+    lowest row for which the rows above it are (mostly) card rows.
+    """
+    import cv2
+    import numpy as np
 
-    Overlay elements use only pure white (255) and black (0) to match the
-    GLYPHBOX 1-bit aesthetic.  The camera feed is grayscale so the user can
-    see the card clearly for alignment.
+    rgb  = np.asarray(pil)
+    h, w = rgb.shape[:2]
+    x0, y0 = int(_SLOT_ROI[0] * w), int(_SLOT_ROI[1] * h)
+    x1, y1 = int(_SLOT_ROI[2] * w), int(_SLOT_ROI[3] * h)
+    gray = cv2.cvtColor(rgb[y0:y1, x0:x1], cv2.COLOR_RGB2GRAY)
+    small = cv2.resize(gray, (58, 72), interpolation=cv2.INTER_AREA).astype(np.int16)
+    on   = np.abs(np.diff(small, axis=1)).max(axis=1) > 25
+    frac = np.cumsum(on) / np.arange(1, len(on) + 1)
+    rows = np.nonzero(on & (frac >= 0.8))[0]
+    if len(rows) == 0:
+        return 0
+    return int(round((int(rows[-1]) + 1) * 100 / len(on)))
+
+
+def _send_scan_status(pil, halves: dict, cur: int, track_slot: bool,
+                      cam_fd: int) -> bool:
+    """
+    Write a 10-byte GSCN status packet to cam_fd (non-blocking).  The runtime
+    draws the whole scan screen itself from these; no image is sent.
+
+      'GSCN'
+      byte  pos    card insertion 0…100, or 255 when there is no slot view
+      byte  total  cards in the set (0 = not known yet)
+      byte  cur    index of the card currently in view (255 = none decoded)
+      byte  0      reserved
+      uint16 LE    bitmask of captured card indices
 
     Returns False if the pipe is permanently broken (caller should close fd).
     """
     try:
-        import cv2
-        import numpy as np
-
-        W, H = 128, 128
-
-        # Downscale full-res frame → 128×128 then convert to grayscale.
-        frame_small = cv2.resize(
-            np.array(pil), (W, H), interpolation=cv2.INTER_NEAREST
-        )
-        gray = cv2.cvtColor(frame_small, cv2.COLOR_RGB2GRAY)
-
-        # ── Target alignment rectangle (single-code, centred) ─────────────
-        zw = int(W * 0.72)    # 92 px wide
-        zh = int(H * 0.72)    # 92 px tall
-        zx = (W - zw) // 2   # 18 px from left
-        zy = int(H * 0.10)   # 13 px from top
-
-        cv2.rectangle(gray, (zx, zy), (zx + zw - 1, zy + zh - 1), 255, 1)
-
-        # Corner ticks inside the target box (L-shaped, 6 px legs)
-        tk = 6
-        for cx, cy in [(zx, zy), (zx + zw - 1, zy),
-                       (zx, zy + zh - 1), (zx + zw - 1, zy + zh - 1)]:
-            dx = 1 if cx == zx else -1
-            dy = 1 if cy == zy else -1
-            cv2.line(gray, (cx, cy), (cx + dx * tk, cy), 255, 1)
-            cv2.line(gray, (cx, cy), (cx, cy + dy * tk), 255, 1)
-
-        # ── Text overlay via PIL pixel bitmap font ────────────────────────
-        from PIL import Image as _PILImage, ImageDraw as _Draw, ImageFont as _Font
-        _pil_gray = _PILImage.fromarray(gray)
-        _dr       = _Draw.Draw(_pil_gray)
-        # Cache the default font so it is loaded only once across all frames.
-        if not hasattr(_send_cam_frame, "_fnt"):
-            _send_cam_frame._fnt = _Font.load_default()
-        _fnt = _send_cam_frame._fnt
-
-        # ── "GLYPHBOX" title ──────────────────────────────────────────────
-        _dr.text((26, 1), "GLYPHBOX", fill=255, font=_fnt)
-
-        # ── Progress row — one square per card in the set ─────────────────
-        total    = halves.get(-1, 0)
-        captured = sum(1 for k in halves if isinstance(k, int) and k >= 0)
-
-        if total > 0:
-            prog_text = f"{captured}/{total} SCANNED"
-            _dr.text((4, zy + zh + 2), prog_text, fill=255, font=_fnt)
-        else:
-            _dr.text((4, H - 10), "FRAME REAR OF CARD", fill=255, font=_fnt)
-
-        # Convert PIL text back to numpy, then draw progress squares on top.
-        # Squares use cv2 so they stay crisp binary pixels (no AA fringe).
-        gray = np.array(_pil_gray)
-
-        if total > 0:
-            sq    = 7                              # square side (px)
-            gap   = 3                              # gap between squares
-            row_w = total * sq + (total - 1) * gap
-            rx    = (W - row_w) // 2
-            ry    = H - sq - 3
-            for i in range(total):
-                bx = rx + i * (sq + gap)
-                if i in halves:
-                    cv2.rectangle(gray, (bx, ry), (bx + sq, ry + sq), 255, -1)
-                else:
-                    cv2.rectangle(gray, (bx, ry), (bx + sq, ry + sq), 255,  1)
-
-        # Write GCAM header (magic + uint16 W + uint16 H) then pixel data
-        header = b'GCAM' + struct.pack('<HH', W, H)
-        os.write(cam_fd, header + gray.tobytes())
+        pos = 255
+        if track_slot:
+            try:
+                pos = _card_position(pil)
+            except Exception:
+                pos = 255
+        mask = 0
+        for k in halves:
+            if isinstance(k, int) and 0 <= k < 16:
+                mask |= 1 << k
+        total = min(int(halves.get(-1, 0)), 255)
+        os.write(cam_fd, b'GSCN' + struct.pack('<BBBBH', pos, total,
+                                               cur if 0 <= cur < 255 else 255,
+                                               0, mask))
         return True
-
     except BlockingIOError:
-        return True   # reader is behind — skip this frame, scanning continues
+        return True   # reader is behind — skip this packet, scanning continues
     except OSError:
         return False  # broken pipe or write error — caller should close fd
-    except Exception:
-        return True   # cv2/numpy error — non-fatal, keep scanning
 
 
 def decode_from_webcam(output_path: str, device: int = 0,
@@ -596,9 +567,9 @@ def decode_from_webcam(output_path: str, device: int = 0,
 
     headless=True     — skips the standalone OpenCV preview window (used when
                         launched as a subprocess by the glyphbox runtime).
-    cam_fifo          — when non-empty, stream 128×128 grayscale frames with
-                        alignment overlays to this FIFO path so the runtime
-                        can display a live camera feed inside its SDL2 window.
+    cam_fifo          — when non-empty, stream GSCN status packets (card
+                        position, cards captured) to this FIFO path so the
+                        runtime can draw its scan screen and play its chime.
     force_pi=True     — use picamera2 directly; set when launched via
                         --pi-camera (the Pi build flag).
     no_undistort      — barrel-distortion correction is OFF by default.
@@ -610,7 +581,6 @@ def decode_from_webcam(output_path: str, device: int = 0,
     # --save-frame: grab one frame, write it to disk, and exit.
     # Use this to inspect camera image quality before running a full scan.
     if save_frame:
-        import time
         print("Hold your code in front of the camera now.")
         for i in (5, 4, 3, 2, 1):
             print(f"  Capturing in {i}…")
@@ -674,6 +644,7 @@ def decode_from_webcam(output_path: str, device: int = 0,
     _scan_pending:  dict = {}   # results written by scan thread
     _scan_lock      = threading.Lock()
     _scan_thread: list = [None] # mutable cell so the closure can reassign
+    _seen: list = [255, 0.0]    # card index last decoded in view, and when
 
     def _scan_worker(snap):
         # Apply lens undistortion here, inside the background thread, so the
@@ -711,6 +682,9 @@ def decode_from_webcam(output_path: str, device: int = 0,
             new = dict(_scan_pending)
             _scan_pending.clear()
         found_new = False
+        for idx in new:
+            if isinstance(idx, int) and idx >= 0:
+                _seen[0], _seen[1] = idx, time.monotonic()
         # Merge sentinel (-1 = total) first so label printing is correct
         if -1 in new and -1 not in halves:
             halves[-1] = new.pop(-1)
@@ -722,7 +696,8 @@ def decode_from_webcam(output_path: str, device: int = 0,
                 halves[idx] = (flags, payload)
                 lbl = _card_label(idx, total) if total else str(idx + 1)
                 print(f"  ✓ Card {lbl} captured ({len(payload):,} bytes)")
-                _play_ding()
+                if cam_fd < 0:
+                    _play_ding()   # the runtime plays its own chime
                 found_new = True
         return found_new
     # ──────────────────────────────────────────────────────────────────────
@@ -745,9 +720,10 @@ def decode_from_webcam(output_path: str, device: int = 0,
                     if _attempt % 10 == 1:   # print every 10th attempt
                         print(f"  Scanning… (attempt {_attempt})", flush=True)
 
-            # Stream frame to glyphbox runtime (no-op if cam_fd == -1)
+            # Stream status to glyphbox runtime (no-op if cam_fd == -1)
             if cam_fd >= 0:
-                if not _send_cam_frame(pil, halves, cam_fd):
+                cur = _seen[0] if time.monotonic() - _seen[1] < 1.5 else 255
+                if not _send_scan_status(pil, halves, cur, force_pi, cam_fd):
                     os.close(cam_fd)
                     cam_fd = -1
 
