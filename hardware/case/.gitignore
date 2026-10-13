@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+# Generated output: regenerate with the render scripts (see README)
+renders/
+render_assets/
+preview/*
+!preview/camera/
