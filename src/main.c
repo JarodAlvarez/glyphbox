@@ -73,6 +73,7 @@ static int           startup_frame = 0;
 #define SCAN_CARD_H      68
 #define SCAN_CARD_OUT_Y  (-56)   /* fully out of view (clipped at y=14)      */
 #define SCAN_CARD_IN_Y   30      /* seated against the stop                  */
+#define SCAN_READY_FRAMES 12     /* "READY" hold before the card ejects      */
 
 static pid_t        scan_pid      = -1;
 static const char   scan_out[]   = "/tmp/glyphbox_scan.gbcart";
@@ -91,6 +92,7 @@ static unsigned     scan_mask     = 0;
 static int          scan_card_y   = 0;    /* eased on-screen card position   */
 static int          scan_ok_card  = 0;    /* card number just captured       */
 static int          scan_ok_hold  = 0;    /* frames left of the "OK" banner  */
+static int          scan_ready_t  = 0;    /* frames since the camera came up */
 static uint32_t     scan_frame    = 0;
 
 static void find_decoder_path(const char *argv0) {
@@ -134,12 +136,50 @@ static void scan_read_status(void) {
             scan_total = p[5];
             scan_cur   = p[6];
             scan_mask  = mask;
+            if (!scan_ready) audio_scan_ready_play();
             scan_ready = 1;
             i += SCAN_PKT_SZ;
         }
         memmove(cam_recv, cam_recv + i, (size_t)(cam_recv_used - i));
         cam_recv_used -= i;
     }
+}
+
+/* The scanner is kept warm: a standby qr-decode.py process is started ahead
+   of time, loads its libraries (~7 s on a Pi 3, mostly OpenCV) and then
+   waits for SCAN_GO_PATH to appear before opening the camera.  Each scan
+   consumes that process; a fresh standby is started as soon as it ends.   */
+#define SCAN_GO_PATH "/tmp/glyphbox_scan.go"
+static int scan_active = 0;   /* scan_pid is running a scan, not waiting */
+
+static void scanner_standby(void) {
+    if (scan_pid > 0) {
+        /* Reap a standby that died while idle so it gets replaced */
+        if (waitpid(scan_pid, NULL, WNOHANG) == 0) return;
+        scan_pid = -1;
+    }
+    unlink(SCAN_GO_PATH);
+    pid_t pid = fork();
+    if (pid == 0) {
+        char *args[] = {
+            "python3",
+            decoder_path,
+#ifdef PLATFORM_PI_HDMI
+            "--pi-camera",
+#else
+            "--webcam",
+#endif
+            "--headless",
+            "--standby", SCAN_GO_PATH,
+            "--cam-fifo", (char *)CAM_FIFO_PATH,
+            "-o", (char *)scan_out,
+            NULL
+        };
+        execvp("python3", args);
+        _exit(1);
+    }
+    if (pid > 0) scan_pid = pid;
+    else fprintf(stderr, "GLYPHBOX: fork failed\n");
 }
 
 static void start_webcam_scan(void) {
@@ -152,52 +192,47 @@ static void start_webcam_scan(void) {
     scan_total    = 0;
     scan_cur      = 255;
     scan_mask     = 0;
-    scan_card_y   = SCAN_CARD_OUT_Y;
+    scan_card_y   = SCAN_CARD_IN_Y;
     scan_ok_hold  = 0;
     scan_frame    = 0;
+    scan_ready_t  = 0;
 
-    pid_t pid = fork();
-    if (pid == 0) {
-        char *args[] = {
-            "python3",
-            decoder_path,
-#ifdef PLATFORM_PI_HDMI
-            "--pi-camera",
-#else
-            "--webcam",
-#endif
-            "--headless",
-            "--cam-fifo", (char *)CAM_FIFO_PATH,
-            "-o", (char *)scan_out,
-            NULL
-        };
-        execvp("python3", args);
-        _exit(1);
-    }
-    if (pid > 0) scan_pid = pid;
-    else fprintf(stderr, "GLYPHBOX: fork failed\n");
+    scanner_standby();            /* no-op if one is already waiting */
+    int fd = open(SCAN_GO_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd >= 0) close(fd);
+    scan_active = 1;
 }
 
 static int poll_scan(void) {
     scan_read_status();   /* also covers mid-game scans driven from Lua */
-    if (scan_pid < 0) return -1;
+    if (!scan_active || scan_pid < 0) return -1;
     int status;
     pid_t r = waitpid(scan_pid, &status, WNOHANG);
     if (r == 0) return 0;
-    scan_pid = -1;
-    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) return 1;
+    scan_pid    = -1;
+    scan_active = 0;
+    scanner_standby();
+    if (r > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0) return 1;
     return -1;
 }
 
-static void abort_scan(void) {
+static void scanner_kill(void) {
     if (scan_pid > 0) {
         kill(scan_pid, SIGTERM);
         waitpid(scan_pid, NULL, 0);
         scan_pid = -1;
     }
+    scan_active = 0;
+    unlink(SCAN_GO_PATH);
+}
+
+/* End the current scan (if any) and put a fresh scanner on standby */
+static void abort_scan(void) {
+    if (scan_active) scanner_kill();
     if (cam_fifo_fd >= 0) { close(cam_fifo_fd); cam_fifo_fd = -1; }
     unlink(CAM_FIFO_PATH);
     cam_recv_used = 0;
+    scanner_standby();
 }
 
 #else  /* PLATFORM_WEB — stubs so the rest of the file compiles cleanly */
@@ -537,15 +572,17 @@ static void draw_scan(void) {
 
     /* ── Where the card should be ── */
     int target = SCAN_CARD_OUT_Y;
-    if (scan_pos == SCAN_POS_NONE) {
+    int ready_hold = scan_ready && scan_ready_t < SCAN_READY_FRAMES;
+    if (!scan_ready || ready_hold) {
+        target = SCAN_CARD_IN_Y;          /* warm-up: card sits in the seat */
+    } else if (scan_pos == SCAN_POS_NONE) {
         /* No slot view (desktop webcam): loop an insert hint, or hold the
            card seated while one is being read.                            */
         int t = (int)(scan_frame % 75);
-        int hint = SCAN_CARD_OUT_Y +
-                   (SCAN_CARD_IN_Y - SCAN_CARD_OUT_Y) * (t < 45 ? t : 45) / 45;
-        scan_card_y = (scan_cur != 255 || scan_ok_hold > 0) ? SCAN_CARD_IN_Y : hint;
-        target = scan_card_y;
-    } else if (scan_ready) {
+        target = (scan_cur != 255 || scan_ok_hold > 0) ? SCAN_CARD_IN_Y :
+                 SCAN_CARD_OUT_Y +
+                 (SCAN_CARD_IN_Y - SCAN_CARD_OUT_Y) * (t < 45 ? t : 45) / 45;
+    } else {
         target = SCAN_CARD_OUT_Y +
                  (SCAN_CARD_IN_Y - SCAN_CARD_OUT_Y) * scan_pos / 100;
     }
@@ -562,6 +599,21 @@ static void draw_scan(void) {
         renderer_rectf(SCAN_CARD_X + SCAN_CARD_W - 1, SCAN_CARD_IN_Y + k, 1, 2, 1);
     }
     draw_scan_card(scan_card_y);
+
+    if (!scan_ready) {
+        /* Warm-up: a light bar sweeps down the slot, reading a ghosted card.
+           The card shows at half density except where the bar passes.     */
+        int by = 14 + (int)(scan_frame * 3 % 99);
+        for (int y = scan_card_y; y < scan_card_y + SCAN_CARD_H; y++) {
+            if (y >= by - 4 && y <= by + 2) continue;
+            for (int x = SCAN_CARD_X; x < SCAN_CARD_X + SCAN_CARD_W; x++)
+                if ((x + y) & 1) renderer_pset(x, y, 0);
+        }
+        if (by < 100) {
+            renderer_rectf(33, by,     62, 2, 1);
+            renderer_rectf(33, by - 3, 62, 1, 1);
+        }
+    }
     renderer_rectf(0, 0, 128, 14, 0);
 
     renderer_rectf(30, 14, 3, 86, 1);     /* left rail  */
@@ -575,6 +627,8 @@ static void draw_scan(void) {
     char msg[24];
     if (!scan_ready) {
         snprintf(msg, sizeof msg, "CAMERA STARTING");
+    } else if (ready_hold) {
+        snprintf(msg, sizeof msg, "READY");
     } else if (scan_ok_hold > 0) {
         if (scan_total) snprintf(msg, sizeof msg, "CARD %d/%d OK", scan_ok_card, scan_total);
         else            snprintf(msg, sizeof msg, "CARD %d OK", scan_ok_card);
@@ -618,6 +672,7 @@ static void draw_scan(void) {
     /* Two-frame flash as a card is captured, like the boot wordmark */
     if (scan_ok_hold > 43) renderer_invert();
     if (scan_ok_hold > 0) scan_ok_hold--;
+    if (scan_ready && scan_ready_t < SCAN_READY_FRAMES) scan_ready_t++;
     scan_frame++;
 }
 #endif
@@ -864,6 +919,7 @@ int main(int argc, char *argv[]) {
     lua_api_init();
 #ifndef PLATFORM_WEB
     lua_api_set_scan_fns(start_webcam_scan, poll_scan, scan_out);
+    scanner_standby();   /* warm up while the boot animation plays */
 #endif
 
     if (cart_path) {
@@ -885,7 +941,9 @@ int main(int argc, char *argv[]) {
     while (running) game_loop_tick();
 
     /* ── Cleanup (native only — browser tab close handles web cleanup) ── */
-    abort_scan();
+    scanner_kill();
+    if (cam_fifo_fd >= 0) close(cam_fifo_fd);
+    unlink(CAM_FIFO_PATH);
     if (g_cart) cart_free(g_cart);
     lua_api_shutdown();
     input_shutdown();

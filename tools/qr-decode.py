@@ -382,7 +382,6 @@ def _open_picamera2() -> tuple:
 
     Returns (capture_fn, close_fn).
     """
-    import time as _time
     from picamera2 import Picamera2
     Image = _require("PIL.Image", "pillow")
 
@@ -398,7 +397,6 @@ def _open_picamera2() -> tuple:
     cam.configure(cfg)
 
     cam.start()
-    _time.sleep(0.5)   # video mode converges AE/AWB faster than still mode
 
     # Enable continuous autofocus and raise in-ISP sharpness.
     # AfMode=2 + AfSpeed=1: continuous fast AF (AF cameras only; fixed-focus
@@ -407,8 +405,9 @@ def _open_picamera2() -> tuple:
     # at it — helps the first pass succeed without needing the software
     # sharpening fallback.  Dense codes (101×101 modules) benefit most.
     try:
+        # No settle delay: AE and AF converge while the scan loop is already
+        # streaming; frames before then just fail to decode.
         cam.set_controls({"AfMode": 2, "AfSpeed": 1, "Sharpness": 4.0})
-        _time.sleep(1.0)   # allow AF to converge before first capture
     except Exception:
         pass
 
@@ -860,6 +859,29 @@ def _load_scanner_flags() -> list:
     return tokens
 
 
+def _standby(go_file: str) -> None:
+    """
+    Pay the slow imports up front, then block until the runtime asks for a
+    scan by creating go_file.  On a Pi 3, Debian's OpenCV alone takes ~6 s to
+    import; done here, it happens while the player is still on the splash
+    screen.  Exits quietly if the runtime that started us goes away.
+    """
+    for mod in ("numpy", "cv2", "PIL.Image", "zxingcpp", "picamera2"):
+        try:
+            __import__(mod)
+        except ImportError:
+            pass   # picamera2 is absent off the Pi; others are reported later
+    parent = os.getppid()
+    while not os.path.exists(go_file):
+        if os.getppid() != parent:
+            sys.exit(0)
+        time.sleep(0.03)
+    try:
+        os.unlink(go_file)
+    except OSError:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Decode a GLYPHBOX Aztec card (image/PDF/webcam) to a .gbcart file."
@@ -903,7 +925,14 @@ def main():
     # Inject flags from ~/.glyphbox/scanner_flags before explicit sys.argv
     # so command-line args always win over config-file defaults.
     extra_flags = _load_scanner_flags()
+    parser.add_argument("--standby", default="", metavar="GO_FILE",
+                        help="Load all libraries, then wait until GO_FILE exists "
+                             "before opening the camera (used by glyphbox to keep "
+                             "a warm scanner ready)")
     args = parser.parse_args(extra_flags + sys.argv[1:])
+
+    if args.standby:
+        _standby(args.standby)
 
     if args.webcam or args.pi_camera:
         decode_from_webcam(args.output, args.device,

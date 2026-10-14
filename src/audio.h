@@ -28,6 +28,9 @@ int  audio_startup_active(void);
    Mixed alongside the system channel; yields to the jingle. */
 void audio_scan_ok_play(void);
 
+/* Camera-ready chime — quick three-note rise when the scanner comes up. */
+void audio_scan_ready_play(void);
+
 /* Master volume — range 0.0 (silent) to 1.0 (full).  Default 1.0.
    Steps of 0.1 via the controller Start/Select buttons. */
 void  audio_set_volume(float v);

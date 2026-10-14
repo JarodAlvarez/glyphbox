@@ -77,11 +77,19 @@ static const ChimeNote SCAN_OK_SEQ[] = {
     { 660.0, 0.08, 0.55 },
     { 880.0, 0.16, 0.70 },
 };
-#define SCAN_OK_LEN  (int)(sizeof(SCAN_OK_SEQ) / sizeof(SCAN_OK_SEQ[0]))
-#define SCAN_OK_GAIN 0.7     /* sits a little under the cart-load jingle */
+/* Camera ready: a quick three-note rise in the same voice */
+static const ChimeNote SCAN_READY_SEQ[] = {
+    {  523.25, 0.06, 0.45 },
+    {  783.99, 0.06, 0.50 },
+    { 1046.50, 0.14, 0.55 },
+};
+#define SCAN_CHIME_GAIN 0.7  /* sits a little under the cart-load jingle */
 
-static int scan_ok_note = -1;    /* -1 = inactive; touched under the audio lock */
-static int scan_ok_pos  = 0;     /* samples into the current note */
+/* Touched under the audio lock */
+static const ChimeNote *chime_seq = NULL;
+static int chime_len  = 0;
+static int chime_note = -1;      /* -1 = inactive */
+static int chime_pos  = 0;       /* samples into the current note */
 
 static SfxPattern    sfx_patterns[16];
 static MusicPattern  music_patterns[4];
@@ -172,15 +180,15 @@ static void audio_callback(void *userdata, uint8_t *stream, int len) {
             }
         }
 
-        /* ── Scan chime (system) ── */
-        if (scan_ok_note >= 0) {
-            const ChimeNote *n = &SCAN_OK_SEQ[scan_ok_note];
-            double t = (double)scan_ok_pos / SAMPLE_RATE;
+        /* ── Scan chimes (system) ── */
+        if (chime_note >= 0) {
+            const ChimeNote *n = &chime_seq[chime_note];
+            double t = (double)chime_pos / SAMPLE_RATE;
             mix += n->vol * exp(-t * 10.0) * sin(2.0 * M_PI * n->freq * t)
-                   * SCAN_OK_GAIN;
-            if (++scan_ok_pos >= (int)(n->secs * SAMPLE_RATE)) {
-                scan_ok_pos = 0;
-                if (++scan_ok_note >= SCAN_OK_LEN) scan_ok_note = -1;
+                   * SCAN_CHIME_GAIN;
+            if (++chime_pos >= (int)(n->secs * SAMPLE_RATE)) {
+                chime_pos = 0;
+                if (++chime_note >= chime_len) chime_note = -1;
             }
         }
 
@@ -212,12 +220,22 @@ static void _load_jnote(const JNote *n) {
 static void _jingle_load(int idx)  { _load_jnote(&JINGLE_SEQ[idx]);  }
 static void _startup_load(int idx) { _load_jnote(&STARTUP_SEQ[idx]); }
 
-void audio_scan_ok_play(void) {
+static void chime_play(const ChimeNote *seq, int len) {
     if (jingle_note_idx >= 0) return;   /* never talk over the jingle */
     SDL_LockAudioDevice(audio_device_id);
-    scan_ok_note = 0;
-    scan_ok_pos  = 0;
+    chime_seq  = seq;
+    chime_len  = len;
+    chime_note = 0;
+    chime_pos  = 0;
     SDL_UnlockAudioDevice(audio_device_id);
+}
+
+void audio_scan_ok_play(void) {
+    chime_play(SCAN_OK_SEQ, (int)(sizeof SCAN_OK_SEQ / sizeof SCAN_OK_SEQ[0]));
+}
+
+void audio_scan_ready_play(void) {
+    chime_play(SCAN_READY_SEQ, (int)(sizeof SCAN_READY_SEQ / sizeof SCAN_READY_SEQ[0]));
 }
 
 void audio_jingle_play(void) {

@@ -137,6 +137,8 @@ typedef enum {
 - ESC during `STATE_RUNNING` unloads the cart and returns to `STATE_SPLASH`.
 - Reset combo (defined in `input.c`) also returns to `STATE_SPLASH` from `STATE_RUNNING`.
 
+**Warm scanner (native only):** `main.c` keeps one `tools/qr-decode.py --standby` process running from boot. It pays the slow imports up front (Debian's OpenCV alone takes ~6.3 s on the Pi 3, and Python holds the import lock, so it cannot be hidden in a thread), then waits for `/tmp/glyphbox_scan.go` before opening the camera. Pressing scan creates that file, so the camera is up in ~1 s instead of ~9 s. Each scan consumes the process; `scanner_standby()` starts the next one when it ends. Use `scanner_kill()` on exit, not `abort_scan()` (which respawns).
+
 ---
 
 ## Source Files — What Each Does
@@ -454,6 +456,8 @@ Three build targets, controlled by `#define`:
 | `rpg.gbcart` | RPG |
 | `dk.gbcart` | Donkey Kong style |
 | `sta.gbcart` | Space shooter |
+| `fett.gbcart` | Boba Fett saber duel (Trilogy Arcade bonus stage) — 4 cards, ~70 bytes under the 4-card limit |
+| `yavin4.gbcart` | Trilogy Arcade Yavin, all three stages on real recorded enemy paths — 8 cards (6,019 of 6,400 bytes). Data packed by `demos/yavin4/gen_data.py` from `~/Desktop/model3` (read-only) |
 | `putt.gbcart` | Golf — 4 holes, real ball physics, putting sub-game, expansion-ready |
 
 ---
