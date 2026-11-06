@@ -135,6 +135,8 @@ def page(title, crumb, body, runnable, depth, extra_top="", extra_bottom="", act
 def load_dir(d):
     pages = []
     for f in sorted(d.glob("*.md")):
+        if f.name == "README.md":        # GitHub index, not a site page
+            continue
         meta, text = front_matter(f.read_text())
         pages.append({"file": f, "slug": f.stem, "title": meta.get("title", f.stem),
                       "order": int(meta.get("order", 99)), "text": text})
@@ -189,7 +191,8 @@ def main():
 
     rows = [f'<li class="sel"><a href="../learn/"><canvas data-px="LEARN" data-scale="3"></canvas>'
             f'<span>MAKE YOUR FIRST GAME IN {len(lessons)} LESSONS →</span></a></li>']
-    blurbs = {"api": "EVERY FUNCTION A GAME CAN CALL", "carts": "PROJECT FILES, THE CARD BUDGET, THE CART FORMAT"}
+    blurbs = {"api": "EVERY FUNCTION A GAME CAN CALL", "carts": "PROJECT FILES, THE CARD BUDGET, THE CART FORMAT",
+              "build": "PARTS, PRINTING, WIRING AND PI SETUP"}
     for D in docs:
         rows.append(f'<li><a href="{D["slug"]}.html"><canvas data-px="{px_text(D["title"])}" data-scale="3"></canvas>'
                     f'<span>{blurbs.get(D["slug"], "")} →</span></a></li>')

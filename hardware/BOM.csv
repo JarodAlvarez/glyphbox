@@ -13,9 +13,10 @@ Console,"Micro USB extension, 1 ft, left angle, panel mount",1,Amazon,,confirmed
 Console,"HCFeng USB 2.0 A panel-mount extension, 30 cm, up-angle male",1,Amazon,https://www.amazon.com/dp/B0DDH91CWV,confirmed,Controller socket on the front wall (2-pack)
 Console,"Raspberry Pi 3 power supply (micro USB, 5V 2.5A)",1,Standard Pi 3 supply,,confirmed,Plugs into the rear-panel micro USB socket
 Console,10 x 2 mm magnet,2,,,confirmed,"Stacked and glued together, behind the controller dock"
-Console,M3 self-tapping screws,13,,,confirmed,6 rear panel + 5 screen/speaker clips + 2 USB clamp
-Console,M2 screws,4,,,confirmed,Camera posts
+Console,M3 machine screws,13,,,confirmed,"6 rear panel + 5 screen/speaker clips + 2 USB clamp, into tapped holes (resin: never self-tappers)"
+Console,M2 screws,4,,,confirmed,"Camera posts, into tapped holes"
 Console,M2.5 screws,4,,,assumed,Pi mount (count not confirmed)
+Console,MacBook Pro replacement rubber feet (~19 mm),4,,,confirmed,Recesses under the case are 19.6 × 1 mm
 Printed,glyphbox_body.stl,1,Resin print,,confirmed,
 Printed,glyphbox_rear_panel.stl,1,Resin print,,confirmed,
 Printed,glyphbox_screen_clip.stl,5,Resin print,,confirmed,

@@ -1,0 +1,83 @@
+(footprint "GBP_Membrane_Contact"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -3.5 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "65b94ebf-07b1-4539-8b9a-ec74465c6d08")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "GBP_Membrane_Contact"
+		(at 0 6.5 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "90dc2a0c-716e-4be4-8b49-7d8c1cc98222")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "92a5470c-5b58-4aea-91f9-2cd5bab92f0f")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "e52f7ed7-bfec-4dd4-9408-3a2af1480eaf")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_text user "${REFERENCE}"
+		(at 0 4.5 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "e0e9b393-842b-4fb0-b7ba-78a9ab018578")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -2 0)
+		(size 2.5 4)
+		(layers "F.Cu" "F.Mask")
+		(uuid "2c7f002a-8989-400d-947c-915351413a2c")
+	)
+	(pad "2" smd rect
+		(at 2 0)
+		(size 2.5 4)
+		(layers "F.Cu" "F.Mask")
+		(uuid "0fbe319e-0016-4b3f-9681-225f5222967c")
+	)
+	(embedded_fonts no)
+)
