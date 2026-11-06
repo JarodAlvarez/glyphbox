@@ -1,0 +1,30 @@
+section,part,qty,source,link,status,notes
+Console,Raspberry Pi 3 Model B,1,,,confirmed,Mounted on the right wall with M2.5 screws
+Console,microSD card,1,,,assumed,For the OS and console software
+Console,"OSOYOO 3.5"" HDMI LCD (touch, with stylus)",1,Amazon,,confirmed,Powered from a Pi USB port; held by 3 screen clips
+Console,"Right-angle HDMI cable, flat slim, 1 ft",1,Amazon,,confirmed,Display to Pi; the right-angle plug sits fully enclosed above the display
+Console,"Arducam Camera Module 3, 12MP IMX708, 75° autofocus, 15-22 pin FFC",1,Amazon,,confirmed,"Standard FOV lens; on 4 floor posts, M2"
+Console,USB LED strip,1,,,confirmed,Lights the card slot; powered from a Pi USB port; needs diffusing
+Console,Game Boy DMG speaker (8 ohm),1,Original DMG part,,confirmed,Salvaged from a DMG; 2 clips hold it behind the left-wall grille
+Console,PAM8403 amplifier board (HiLetgo 5-pack),1,Amazon,https://www.amazon.com/dp/B00LODGV64,confirmed,Bare solder pads; 5V from Pi pin 2 and GND pin 6
+Console,3.5 mm stereo cable (cut),1,,,confirmed,Pi headphone jack to amp L and G
+Console,F-M DuPont jumper wires,2,,,confirmed,Amp power to Pi pins
+Console,"Micro USB extension, 1 ft, left angle, panel mount",1,Amazon,,confirmed,Rear-panel power input
+Console,"HCFeng USB 2.0 A panel-mount extension, 30 cm, up-angle male",1,Amazon,https://www.amazon.com/dp/B0DDH91CWV,confirmed,Controller socket on the front wall (2-pack)
+Console,"Raspberry Pi 3 power supply (micro USB, 5V 2.5A)",1,Standard Pi 3 supply,,confirmed,Plugs into the rear-panel micro USB socket
+Console,10 x 2 mm magnet,2,,,confirmed,"Stacked and glued together, behind the controller dock"
+Console,M3 self-tapping screws,13,,,confirmed,6 rear panel + 5 screen/speaker clips + 2 USB clamp
+Console,M2 screws,4,,,confirmed,Camera posts
+Console,M2.5 screws,4,,,assumed,Pi mount (count not confirmed)
+Printed,glyphbox_body.stl,1,Resin print,,confirmed,
+Printed,glyphbox_rear_panel.stl,1,Resin print,,confirmed,
+Printed,glyphbox_screen_clip.stl,5,Resin print,,confirmed,
+Printed,glyphbox_usb_clamp.stl,1,Resin print,,confirmed,
+Printed,Controller shell,1,3D print,,confirmed,Files to be added from the controller Fusion project
+Controller,Controller PCB v2 (114.3 x 58.5 mm),1,JLCPCB,,confirmed,Gerbers in hardware/controller
+Controller,Raspberry Pi Pico,1,,,confirmed,Soldered flat by its castellated edges; runs CircuitPython
+Controller,Game Boy Pocket reproduction membranes (D-pad + A/B),1 set,Reproduction GBP parts,,confirmed,
+Controller,"Game Boy Pocket reproduction buttons (D-pad, A, B)",1 set,Reproduction GBP parts,,confirmed,
+Controller,10 x 2 mm magnet,2,,,confirmed (size assumed same as console),Stacked and glued together in the controller shell
+Controller,M2.5 screws,2,,,assumed,PCB mounting holes
+Controller,USB cable (coiled),1,,,assumed,Pico to the console's front socket
