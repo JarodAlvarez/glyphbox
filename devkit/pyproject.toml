@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glyphbox-devkit"
+version = "0.1.0"
+description = "Build, run and print games for the GLYPHBOX fantasy console"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Gureedo" }]
+requires-python = ">=3.9"
+dependencies = [
+  "aztec-code-generator>=0.11",
+  "reportlab>=3.6",
+  "pillow>=9",
+]
+
+[project.urls]
+Homepage = "https://jarodalvarez.github.io/glyphbox/"
+Source = "https://github.com/JarodAlvarez/glyphbox"
+
+[project.scripts]
+glyph = "glyph.cli:main"
+
+[tool.setuptools]
+packages = ["glyph"]
+
+[tool.setuptools.package-data]
+glyph = ["template/*"]

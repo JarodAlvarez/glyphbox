@@ -1,0 +1,1 @@
+# 4 patterns, one per line: space-separated sfx pattern ids

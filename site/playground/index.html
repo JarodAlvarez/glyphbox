@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080808">
+<meta name="description" content="Write and run GLYPHBOX games in your browser.">
+<title>GLYPHBOX Playground</title>
+<link rel="icon" href="../logo/glyphbox.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="playground.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="../" data-logo="horizontal" aria-label="GLYPHBOX home"></a>
+  <canvas data-px="PLAYGROUND" data-scale="2" class="crumb"></canvas>
+  <nav><a href="../">HOME</a><a href="https://github.com/JarodAlvarez/glyphbox">GITHUB</a></nav>
+</header>
+
+<main class="pg">
+  <!-- ── Editor ── -->
+  <section class="panel edit">
+    <div class="phead">
+      <ul class="tabs" id="tabs">
+        <li class="sel"><button data-tab="code"><canvas data-px="CODE" data-scale="2"></canvas></button></li>
+        <li><button data-tab="sprites"><canvas data-px="SPRITES" data-scale="2"></canvas></button></li>
+      </ul>
+      <span class="file" id="filename">game.lua</span>
+      <span class="mark" data-logo="mark"></span>
+    </div>
+
+    <div class="pane" id="pane-code"><textarea id="code"></textarea></div>
+
+    <div class="pane" id="pane-sprites" hidden>
+      <div class="spr">
+        <div class="spr-tile">
+          <canvas id="tile" width="8" height="8"></canvas>
+          <div class="spr-info"><span id="tile-id">SPRITE 000</span><code id="tile-use">spr(0, x, y)</code></div>
+          <ul class="menu row" id="tile-tools">
+            <li><button data-op="clear">CLEAR</button></li>
+            <li><button data-op="invert">INVERT</button></li>
+            <li><button data-op="fliph">FLIP H</button></li>
+            <li><button data-op="flipv">FLIP V</button></li>
+          </ul>
+        </div>
+        <div class="spr-sheet">
+          <canvas id="sheet" width="128" height="64"></canvas>
+          <p class="hint-text">Click a tile to edit it. Click or drag on the big grid to draw. Changes take effect on the next run.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Console ── -->
+  <aside class="side">
+    <div class="screen framed"><canvas id="canvas" tabindex="0" aria-label="GLYPHBOX screen" oncontextmenu="event.preventDefault()"></canvas></div>
+    <p class="keys">ARROWS / WASD MOVE · Z / SPACE ACTION · ESC MENU</p>
+
+    <ul class="menu" id="actions">
+      <li class="sel"><button id="run"><canvas data-px="RUN" data-scale="3"></canvas><span>CTRL+ENTER</span></button></li>
+    </ul>
+
+    <div class="block">
+      <div class="label"><span>CARD BUDGET</span><span id="budget-text">≈ 1 / 8 CARDS</span></div>
+      <div class="pips" id="pips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="note">Estimated from your code. <code>glyph build</code> gives the exact count.</p>
+    </div>
+
+    <div class="block">
+      <div class="label"><span>EXAMPLES</span></div>
+      <ul class="menu small" id="examples"></ul>
+    </div>
+
+    <div class="block">
+      <div class="label"><span>OUTPUT</span><button class="link" id="clear-log">CLEAR</button></div>
+      <pre class="log" id="log"></pre>
+    </div>
+
+    <div class="block">
+      <div class="label"><span>DOWNLOAD</span></div>
+      <ul class="menu small row">
+        <li><button id="dl-lua">GAME.LUA</button></li>
+        <li><button id="dl-spr">SPRITES.TXT</button></li>
+      </ul>
+    </div>
+  </aside>
+</main>
+
+<script src="../font.js"></script>
+<script src="../glyph-ui.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/lua/lua.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="playground.js"></script>
+<script src="glyphbox.js" async></script>
+</body>
+</html>

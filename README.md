@@ -13,7 +13,16 @@ A 1-bit fantasy console you can build yourself. Games are written in Lua, printe
 
 **Website:** https://jarodalvarez.github.io/glyphbox/
 
-This repository will hold the devkit, the docs and cart format spec, example and original games, and the hardware files for building a console. They're being moved in now.
+**Try it:** the [browser playground](https://jarodalvarez.github.io/glyphbox/playground/) runs the real console in your browser. Write Lua, draw sprites, and run.
+
+**Make a game:** install the [devkit](devkit/) for `glyph new`, `glyph run` (live reload), `glyph build` and `glyph print`.
+
+| Folder | What's in it |
+|---|---|
+| [devkit/](devkit/) | The `glyph` command-line devkit |
+| [games/](games/) | Original games, with source |
+| [hardware/](hardware/) | Bill of materials. Case and controller files are coming |
+| [site/](site/) | The website and playground |
 
 ## Licenses
 

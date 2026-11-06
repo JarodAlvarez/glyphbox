@@ -1,0 +1,1 @@
+# 16 patterns, one note per line: note,vol,wave,dur. Blank line between patterns.
