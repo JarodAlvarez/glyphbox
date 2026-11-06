@@ -4,59 +4,279 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#080808">
-<meta name="description" content="GLYPHBOX: a 1-bit fantasy console you can build, with games printed on cards.">
-<title>GLYPHBOX</title>
+<meta name="description" content="GLYPHBOX: a 1-bit console you can build yourself. Games are written in Lua, printed on cards, and read by a camera in the slot.">
+<title>GLYPHBOX · a 1-bit console with games on cards</title>
 <link rel="icon" href="logo/glyphbox.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css?v=012c2a8e">
 <style>
-  :root { --ink:#f0f0ec; --paper:#080808; --dim:#8a8a86; }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  html, body { height:100%; }
-  body { background:var(--paper); color:var(--ink); font:15px/1.6 'JetBrains Mono', ui-monospace, monospace; display:flex; flex-direction:column; }
-  canvas { image-rendering:pixelated; display:block; }
-  a { color:inherit; text-decoration:none; }
-  [data-logo] svg { display:block; width:100%; height:auto; }
-  .bar { background:var(--ink); color:var(--paper); display:flex; align-items:center; height:56px; padding:0 24px; }
-  .bar .brand { width:172px; }
-  main { flex:1; display:grid; grid-template-columns:auto minmax(0, 420px); gap:64px; align-items:center; justify-content:center; padding:56px 24px; }
-  .screen { width:min(448px, 80vw); aspect-ratio:1; height:auto; outline:4px solid var(--ink); outline-offset:10px; }
-  main p { color:var(--dim); margin:20px 0 28px; }
-  .menu { list-style:none; display:grid; gap:8px; }
-  .menu a { display:flex; align-items:center; justify-content:space-between; padding:10px 18px; }
-  .menu li.sel a { background:var(--ink); color:var(--paper); }
-  footer { border-top:4px solid var(--ink); margin:0 24px; padding:16px 0 28px; display:flex; justify-content:space-between; color:var(--dim); font-size:12px; }
-  @media (max-width: 860px) {
-    main { grid-template-columns:1fr; justify-items:center; gap:48px; padding:40px 16px; }
-    .bar { padding:0 16px; } footer { margin:0 16px; }
+  .home { width:100%; max-width:1120px; margin:0 auto; padding:0 24px; }
+  .rule { height:var(--px); background:var(--ink); }
+
+  .hero { display:grid; grid-template-columns:512px minmax(0, 1fr); gap:64px; align-items:center; padding:72px 0; }
+  .hero .screen { width:512px; height:512px; margin:0; }
+  .hero p { color:#cfcfca; margin:22px 0 30px; max-width:42ch; }
+  .hero .menu { max-width:430px; }
+
+  section { padding:72px 0; }
+  .sec { margin-bottom:36px; }
+  .sec .bar { height:48px; padding:0 18px; justify-content:space-between; }
+  .sec .bar .mark { width:20px; }
+  .lead { color:#cfcfca; max-width:66ch; margin-top:18px; }
+
+  .steps4 { display:grid; grid-template-columns:repeat(4, 1fr); gap:28px; }
+  .steps4 canvas, .steps4 img { width:100%; aspect-ratio:1; }
+  .steps4 img { object-fit:contain; background:#fff; }
+  .steps4 h4 { margin:24px 0 6px; font-size:14px; }
+  .steps4 p { color:var(--dim); font-size:13px; }
+  .num { display:inline-block; background:var(--ink); color:var(--paper); padding:0 8px; margin-right:8px; }
+
+  .console { display:grid; grid-template-columns:minmax(0, 1fr) 340px; gap:56px; align-items:center; }
+  .device { position:relative; background:#ececea; }
+  .device img { width:100%; display:block; }
+  .device canvas { position:absolute; left:33.4%; top:24.4%; width:17.2%; aspect-ratio:1; }
+  .swatch { width:16px; height:16px; border:2px solid currentColor; flex:none; }
+  .lineup { width:100%; display:block; margin-top:56px; }
+  .specs { list-style:none; display:grid; grid-template-columns:1fr 1fr; column-gap:48px; margin-top:56px; font-size:14px; }
+  .specs li { display:flex; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:2px dotted #333; }
+  .specs li span:last-child { color:var(--dim); text-align:right; }
+
+  .games { display:grid; grid-template-columns:repeat(5, 1fr); gap:18px; }
+  .game { padding:8px; border:2px solid transparent; color:var(--dim); text-decoration:none; display:block; }
+  .game img { width:100%; aspect-ratio:1; image-rendering:pixelated; display:block; background:#000; }
+  .game .meta { display:flex; justify-content:space-between; margin:10px 0 8px; font-size:12px; }
+  .pips { display:flex; gap:3px; }
+  .pips i { flex:1; height:9px; border:2px solid currentColor; }
+  .pips i.on { background:currentColor; }
+  .game:hover, .game.sel { border-color:var(--ink); color:var(--ink); }
+
+  .hw { display:grid; grid-template-columns:1.2fr 1fr; gap:48px; align-items:start; }
+  .hw .gal img { width:100%; display:block; background:#eee; }
+  .thumbs { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:24px; }
+  .bom { list-style:none; font-size:14px; }
+  .bom li { display:grid; grid-template-columns:1fr auto; gap:16px; padding:10px 0; border-bottom:2px dotted #333; }
+  .bom li span:last-child { color:var(--dim); }
+  .bom li.h { border-bottom:var(--px) solid var(--ink); font-weight:600; }
+
+  .dev { display:grid; grid-template-columns:1fr 1fr; gap:40px; }
+  .dev pre { background:#0f0f0f; border:2px solid var(--line); padding:20px; overflow:auto; font-size:13px; line-height:1.7; color:#cfcfca; }
+  .dev pre b { color:var(--ink); font-weight:600; } .dev pre i { color:#6a6a66; font-style:normal; }
+  .menu.three { grid-template-columns:repeat(4, 1fr); margin-top:32px; }
+
+  .ftop { display:flex; justify-content:space-between; align-items:center; padding:48px 0; }
+  .ftop .stack { width:150px; }
+  .cols { display:flex; gap:56px; font-size:13px; color:var(--dim); }
+  .cols b { display:block; color:var(--ink); margin-bottom:8px; }
+  .cols a { display:block; text-decoration:none; } .cols a:hover { color:var(--ink); }
+  .fbot { display:flex; justify-content:space-between; padding:16px 0 32px; color:var(--dim); font-size:12px; }
+
+  @media (max-width: 1100px) {
+    .hero { grid-template-columns:1fr; justify-items:center; gap:48px; padding:48px 0; }
+    .hero .screen { width:min(512px, calc(100vw - 64px)); height:auto; aspect-ratio:1; }
+    .console, .hw, .dev { grid-template-columns:1fr; }
+    .games { grid-template-columns:repeat(3, 1fr); }
+    .menu.three { grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width: 640px) {
+    .home { padding:0 16px; }
+    .steps4 { grid-template-columns:1fr 1fr; }
+    .games { grid-template-columns:1fr 1fr; }
+    .specs { grid-template-columns:1fr; }
+    .menu.three { grid-template-columns:1fr; }
+    .ftop { flex-direction:column; align-items:flex-start; gap:32px; } .cols { gap:28px; flex-wrap:wrap; }
   }
 </style>
 </head>
 <body>
-<header class="bar"><a class="brand" href="./" data-logo="horizontal" aria-label="GLYPHBOX"></a></header>
-<main>
-  <canvas class="screen" id="reel"></canvas>
-  <div>
-    <canvas data-px="COMING SOON" data-scale="5"></canvas>
-    <p>GLYPHBOX is a 1-bit fantasy console you can build yourself. Games are written in Lua, printed as Aztec codes on credit-card-sized cards, and read by a camera in the card slot. Play the games or write your own in the browser. The devkit is on GitHub, and the build guide is on its way.</p>
-    <ul class="menu" id="menu">
-      <li class="sel"><a href="play/"><canvas data-px="PLAY IN BROWSER" data-scale="3"></canvas><span>→</span></a></li>
-      <li><a href="learn/"><canvas data-px="LEARN TO MAKE GAMES" data-scale="3"></canvas><span>→</span></a></li>
-      <li><a href="playground/"><canvas data-px="PLAYGROUND" data-scale="3"></canvas><span>→</span></a></li>
-      <li><a href="https://github.com/JarodAlvarez/glyphbox"><canvas data-px="FOLLOW ON GITHUB" data-scale="3"></canvas><span>→</span></a></li>
-    </ul>
+
+<header class="bar top">
+  <a class="brand" href="./" data-logo="horizontal" aria-label="GLYPHBOX home"></a>
+  <nav><a href="play/">PLAY</a><a href="learn/">LEARN</a><a href="docs/">DOCS</a><a href="docs/build.html">BUILD</a><a href="playground/">PLAYGROUND</a><a href="https://github.com/JarodAlvarez/glyphbox">GITHUB</a></nav>
+</header>
+
+<div class="home">
+  <div class="hero">
+    <canvas class="screen framed" id="reel" aria-label="The GLYPHBOX boot, scan and menu screens"></canvas>
+    <div>
+      <canvas data-px="GAMES ON CARDS" data-scale="5" aria-label="Games on cards"></canvas>
+      <p>GLYPHBOX is a 1-bit console you can build yourself, with a 128 × 128 screen, a D-pad and one button. Games are written in Lua and compiled onto credit-card-sized cards, and a camera in the card slot reads them.</p>
+      <ul class="menu" id="heromenu">
+        <li class="sel"><a href="play/"><canvas data-px="PLAY IN BROWSER" data-scale="3"></canvas><span>→</span></a></li>
+        <li><a href="learn/"><canvas data-px="MAKE A GAME" data-scale="3"></canvas><span>→</span></a></li>
+        <li><a href="docs/build.html"><canvas data-px="BUILD A CONSOLE" data-scale="3"></canvas><span>→</span></a></li>
+      </ul>
+    </div>
   </div>
-</main>
-<footer><span>(C) GUREEDO 2026</span><span>GLYPHBOX</span></footer>
+  <div class="rule"></div>
+
+  <section id="how">
+    <div class="sec"><div class="bar"><canvas data-px="HOW IT WORKS" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
+      <p class="lead">A game is a folder of Lua and art. The devkit compiles it into a cart and prints the cart onto cards. The console reads the cards in any order and boots the game.</p></div>
+    <div class="steps4">
+      <div><canvas class="framed" id="st1"></canvas><h4><span class="num">1</span>WRITE</h4><p>_init, _update and _draw. Sprites, a 16 × 16 tile map and two sound channels.</p></div>
+      <div><canvas class="framed" id="st2"></canvas><h4><span class="num">2</span>BUILD</h4><p><code>glyph build</code> compiles the game and tells you how many cards it needs.</p></div>
+      <div><img class="framed" src="img/card.png" alt="A printed GLYPHBOX card"><h4><span class="num">3</span>PRINT</h4><p>Up to 8 cards per game, each with 800 bytes of Aztec code.</p></div>
+      <div><canvas class="framed" id="st4"></canvas><h4><span class="num">4</span>SCAN</h4><p>Slide each card into the slot. The screen follows the card in.</p></div>
+    </div>
+  </section>
+  <div class="rule"></div>
+
+  <section id="console">
+    <div class="sec"><div class="bar"><canvas data-px="THE CONSOLE" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
+      <p class="lead">A 3D-printed case around a Raspberry Pi 3, with a camera under the card slot and a controller that docks on magnets. Its boot screen and menus use the same 1-bit screen and font as the games.</p></div>
+    <div class="console">
+      <div class="device framed"><img id="devimg" src="img/renders/white_02_front_right.jpg" alt="GLYPHBOX console, white"><canvas id="live" aria-hidden="true"></canvas></div>
+      <div>
+        <canvas data-px="COLORWAYS" data-scale="3" style="margin:0 0 20px 18px"></canvas>
+        <ul class="menu" id="colors"></ul>
+      </div>
+    </div>
+    <img class="lineup framed" src="img/renders/lineup_front.jpg" alt="GLYPHBOX in white, yellow, lilac and black">
+    <ul class="specs">
+      <li><span>DISPLAY</span><span>128 × 128, 1-BIT</span></li>
+      <li><span>INPUT</span><span>D-PAD + ACTION + MENU</span></li>
+      <li><span>AUDIO</span><span>2 CHANNELS + SYSTEM</span></li>
+      <li><span>SPRITES</span><span>128 × 8×8</span></li>
+      <li><span>FRAME RATE</span><span>30 FPS</span></li>
+      <li><span>GAMES</span><span>COMPILED LUA · ≤ 8 CARDS</span></li>
+      <li><span>INSIDE</span><span>RASPBERRY PI 3</span></li>
+      <li><span>CONTROLLER</span><span>PI PICO · USB</span></li>
+    </ul>
+  </section>
+  <div class="rule"></div>
+
+  <section id="games">
+    <div class="sec"><div class="bar"><canvas data-px="GAMES" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
+      <p class="lead">Original games, recorded on the console's own runtime. Every one plays in your browser, and the meter shows how many of its 8 cards it uses.</p></div>
+    <div class="games" id="gamegrid"></div>
+    <ul class="menu three" style="grid-template-columns:1fr 1fr">
+      <li class="sel"><a href="play/"><canvas data-px="PLAY THEM NOW" data-scale="3"></canvas><span>→</span></a></li>
+      <li><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/games"><canvas data-px="READ THE SOURCE" data-scale="3"></canvas><span>→</span></a></li>
+    </ul>
+  </section>
+  <div class="rule"></div>
+
+  <section id="build">
+    <div class="sec"><div class="bar"><canvas data-px="BUILD ONE" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
+      <p class="lead">The case, the controller board, its firmware and the parts list are open for anyone building their own. The build guide covers ordering, printing, wiring and setting up the Pi.</p></div>
+    <div class="hw">
+      <div class="gal">
+        <img class="framed" src="img/renders/white_12_undocked.jpg" alt="GLYPHBOX with its controller undocked">
+        <div class="thumbs"><img src="img/renders/white_14_detail_screen.jpg" alt="Screen detail"><img src="img/renders/white_15_detail_controller.jpg" alt="Controller detail"><img src="img/renders/lineup_diagonal.jpg" alt="Colorway lineup"></div>
+      </div>
+      <div>
+        <ul class="bom">
+          <li class="h"><span>MAIN PARTS</span><span>QTY</span></li>
+          <li><span>Raspberry Pi 3 Model B</span><span>1</span></li>
+          <li><span>OSOYOO 3.5" HDMI display</span><span>1</span></li>
+          <li><span>Arducam Camera Module 3 (IMX708, 75°)</span><span>1</span></li>
+          <li><span>USB LED strip</span><span>1</span></li>
+          <li><span>Game Boy speaker + PAM8403 amplifier</span><span>1</span></li>
+          <li><span>Controller PCB + Raspberry Pi Pico</span><span>1</span></li>
+          <li><span>Game Boy Pocket buttons and membranes</span><span>1 set</span></li>
+          <li><span>Printed case parts</span><span>8</span></li>
+        </ul>
+        <ul class="menu" style="margin-top:28px">
+          <li class="sel"><a href="docs/build.html"><canvas data-px="BUILD GUIDE" data-scale="3"></canvas><span>→</span></a></li>
+          <li><a href="https://github.com/JarodAlvarez/glyphbox/blob/main/hardware/BOM.csv"><canvas data-px="FULL PARTS LIST" data-scale="3"></canvas><span>→</span></a></li>
+          <li><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/hardware"><canvas data-px="CASE + PCB FILES" data-scale="3"></canvas><span>→</span></a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <div class="rule"></div>
+
+  <section id="dev">
+    <div class="sec"><div class="bar"><canvas data-px="MAKE GAMES" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
+      <p class="lead">Start in the browser with nothing to install: the lessons and the Playground run the real console beside your code. When you're ready for cards, the devkit builds, counts and prints them.</p></div>
+    <div class="dev">
+<pre><i>-- game.lua</i>
+<b>function</b> _init()
+  x = 60
+<b>end</b>
+
+<b>function</b> _update()
+  <b>if</b> btn(BTN_L) <b>then</b> x = x - 2 <b>end</b>
+  <b>if</b> btn(BTN_R) <b>then</b> x = x + 2 <b>end</b>
+  <b>if</b> btnp(BTN_A) <b>then</b> sfx(0, 60, 6, 0, 4) <b>end</b>
+<b>end</b>
+
+<b>function</b> _draw()
+  cls(0)
+  circf(x, 64, 6, 1)
+<b>end</b></pre>
+<pre>$ <b>glyph new mygame</b>
+  created mygame/  game.lua  sprites.txt  ...
+$ <b>glyph run</b>
+  watching for changes · emulator running
+$ <b>glyph build</b>
+  mygame.gbcart  3,197 B  →  <b>2 / 8 cards</b>
+  ■■□□□□□□  5,440 B left of 6,400
+$ <b>glyph print</b> mygame.gbcart -o cards.pdf</pre>
+    </div>
+    <ul class="menu three">
+      <li class="sel"><a href="learn/"><canvas data-px="LEARN" data-scale="3"></canvas><span>→</span></a></li>
+      <li><a href="playground/"><canvas data-px="PLAYGROUND" data-scale="3"></canvas><span>→</span></a></li>
+      <li><a href="docs/api.html"><canvas data-px="API" data-scale="3"></canvas><span>→</span></a></li>
+      <li><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/devkit"><canvas data-px="DEVKIT" data-scale="3"></canvas><span>→</span></a></li>
+    </ul>
+  </section>
+
+  <footer>
+    <div class="rule"></div>
+    <div class="ftop">
+      <span class="stack" data-logo="stacked" aria-label="GLYPHBOX"></span>
+      <div class="cols">
+        <div><b>PLAY</b><a href="play/">In the browser</a><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/games">Games</a></div>
+        <div><b>MAKE</b><a href="learn/">Learn</a><a href="playground/">Playground</a><a href="docs/">Docs</a><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/devkit">Devkit</a></div>
+        <div><b>BUILD</b><a href="docs/build.html">Build guide</a><a href="https://github.com/JarodAlvarez/glyphbox/blob/main/hardware/BOM.csv">Parts list</a><a href="https://github.com/JarodAlvarez/glyphbox/tree/main/hardware">Case + PCB</a></div>
+        <div><b>PROJECT</b><a href="https://github.com/JarodAlvarez/glyphbox">GitHub</a><a href="https://github.com/JarodAlvarez/glyphbox/blob/main/LICENSE.md">Licenses</a></div>
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="fbot"><span>(C) GUREEDO 2026</span><span>GLYPHBOX</span></div>
+  </footer>
+</div>
+
 <script src="font.js"></script>
 <script src="glyph-ui.js"></script>
 <script>
-  document.querySelectorAll('[data-logo]').forEach(el =>
-    fetch(`logo/${el.dataset.logo}.svg`).then(r => r.text()).then(t => el.innerHTML = t));
+  window.GB_ROOT = "./";
   glyphReel(document.getElementById('reel'));
-  const rows = [...document.querySelectorAll('#menu li')];
-  rows.forEach(r => r.addEventListener('mouseenter', () => { rows.forEach(x => x.classList.toggle('sel', x === r)); glyphText(); }));
-  glyphText();
+  glyphReel(document.getElementById('live'));
+  glyphStill(document.getElementById('st1'), 'splash');
+  glyphStill(document.getElementById('st2'), 'cart', { title: 'MY GAME', author: 'YOU' });
+  glyphStill(document.getElementById('st4'), 'scan');
+
+  const GAMES = [['sunset-run', 'SUNSET RUN', 8], ['glyph-golf', 'GLYPH GOLF', 8], ['tennis', 'TENNIS', 4],
+                 ['chess', 'CHESS', 8], ['runner', 'RUNNER', 2]];
+  const grid = document.getElementById('gamegrid');
+  GAMES.forEach(([id, title, n], i) => {
+    const a = document.createElement('a'); a.className = 'game' + (i ? '' : ' sel'); a.href = 'play/';
+    const pips = Array.from({ length: 8 }, (_, k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('');
+    a.innerHTML = `<img src="img/games/${id}.gif" alt="${title} gameplay" loading="lazy"><div class="meta"><span>${title}</span><span>${n}/8</span></div><div class="pips">${pips}</div>`;
+    a.onmouseenter = () => { grid.querySelectorAll('.game').forEach(g => g.classList.remove('sel')); a.classList.add('sel'); };
+    grid.appendChild(a);
+  });
+
+  const COLORS = [['WHITE', '#f4f4f2', 'white_02_front_right'], ['YELLOW', '#f2c230', 'yellow_front_right'],
+                  ['LILAC', '#b9a6e6', 'lilac_front_right'], ['TEAL', '#3aa79c', 'teal_front_right'],
+                  ['BLACK', '#1a1a1a', 'black_front_right']];
+  const cu = document.getElementById('colors');
+  COLORS.forEach(([n, c, f], i) => {
+    const li = document.createElement('li'); if (!i) li.className = 'sel';
+    li.innerHTML = `<button><canvas data-px="${n}" data-scale="3"></canvas><span class="swatch" style="background:${c}"></span></button>`;
+    li.querySelector('button').onclick = () => {
+      cu.querySelectorAll('li').forEach(x => x.classList.toggle('sel', x === li));
+      document.getElementById('devimg').src = `img/renders/${f}.jpg`;
+      glyphText(cu);
+    };
+    cu.appendChild(li);
+  });
+  // preload the other colorways so switching is instant
+  COLORS.slice(1).forEach(([, , f]) => { const im = new Image(); im.src = `img/renders/${f}.jpg`; });
 </script>
+<script src="assets/site.js?v=012c2a8e"></script>
 </body>
 </html>

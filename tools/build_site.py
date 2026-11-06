@@ -205,10 +205,10 @@ def main():
     (out_docs / "index.html").write_text(page("Docs", "DOCS", body, False, 1, active="DOCS").replace("VERSION", ver))
 
     # Hand-written pages: point their ?v= tags at this build too
-    for f in ["play/index.html", "playground/index.html"]:
+    for f in ["index.html", "play/index.html", "playground/index.html"]:
         p = SITE / f
         if p.exists():
-            p.write_text(re.sub(r"\?v=[0-9a-f]{8}", f"?v={ver}", p.read_text()))
+            p.write_text(re.sub(r"\?v=(?:[0-9a-f]{8}|VERSION)", f"?v={ver}", p.read_text()))
 
     print(f"built {len(lessons)} lessons and {len(docs)} docs pages (v{ver})")
 
