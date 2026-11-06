@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 build/
 *.egg-info/
+
+# Generated from docs/ by tools/build_site.py
+site/docs/
+site/learn/

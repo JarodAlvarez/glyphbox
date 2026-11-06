@@ -89,7 +89,7 @@ window.Module = {
   canvas: document.getElementById('canvas'),
   print: t => { if (t && !/^(Scanning|═)/.test(t)) log(t); },
   printErr: t => { if (!t) return; const err = /error|attempt|expected|nil/i.test(t); if (err || !/^warning/i.test(t)) log(t, err ? 'err' : ''); },
-  onRuntimeInitialized() { ready = true; setTimeout(() => document.title = 'GLYPHBOX Playground', 0); log('Console ready. Press RUN or Ctrl+Enter.'); if (pendingRun) runGame(); },
+  onConsoleReady() { ready = true; setTimeout(() => document.title = 'GLYPHBOX Playground', 0); log('Console ready. Press RUN or Ctrl+Enter.'); if (pendingRun) runGame(); },
 };
 
 function runGame() {

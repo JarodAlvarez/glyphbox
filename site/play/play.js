@@ -11,7 +11,7 @@ window.Module = {
   canvas: document.getElementById('canvas'),
   locateFile: (f, dir) => dir + f + '?' + (document.querySelector('script[src*="glyphbox.js"]').src.split('?')[1] || ''),
   print: () => {}, printErr: t => { if (/error/i.test(t)) console.warn(t); },
-  onRuntimeInitialized() {
+  onConsoleReady() {
     ready = true;
     setTimeout(() => document.title = 'Play GLYPHBOX', 0);
     if (pending) { const p = pending; pending = null; p(); }
