@@ -83,7 +83,7 @@ function _update()
     elseif ac==0 and bd>62 and abs(bx-ax)<14 and abs(bd-ad)<10 and (bc>0 or ad<80) then
       vx,vd,vh = (28+rnd(72)-bx)*0.05, -(1.5+rnd(12)*0.1), 1.4+rnd(12)*0.1
       lh,ac,bc = 1,18,0 sfx(0,30,4,1,5)
-      at=rnd()>.2 and 96 or 65
+      at=rnd(10)>1 and 96 or 65
     end
   end
   
