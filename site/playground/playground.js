@@ -84,6 +84,8 @@ window.GlyphboxScanner = {        // the runtime asks for a scan from the splash
   start() { runGame(); }, stop() {}, showScanButton() {},
 };
 window.Module = {
+  // same version string as the glyphbox.js tag, so a new build is never mixed with a cached .wasm
+  locateFile: (f, dir) => dir + f + (document.querySelector('script[src*="glyphbox.js"]')?.src.split('?')[1] ? '?' + document.querySelector('script[src*="glyphbox.js"]').src.split('?')[1] : ''),
   canvas: document.getElementById('canvas'),
   print: t => { if (t && !/^(Scanning|═)/.test(t)) log(t); },
   printErr: t => { if (!t) return; const err = /error|attempt|expected|nil/i.test(t); if (err || !/^warning/i.test(t)) log(t, err ? 'err' : ''); },

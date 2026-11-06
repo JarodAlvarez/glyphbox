@@ -1,22 +1,27 @@
 [
  {
   "id": "tennis",
-  "title": "TENNIS"
+  "title": "TENNIS",
+  "cards": 4
  },
  {
   "id": "runner",
-  "title": "RUNNER"
+  "title": "RUNNER",
+  "cards": 2
  },
  {
   "id": "chess",
-  "title": "CHESS"
+  "title": "CHESS",
+  "cards": 8
  },
  {
   "id": "glyph-golf",
-  "title": "GLYPH GOLF"
+  "title": "GLYPH GOLF",
+  "cards": 8
  },
  {
   "id": "sunset-run",
-  "title": "SUNSET RUN"
+  "title": "SUNSET RUN",
+  "cards": 8
  }
 ]

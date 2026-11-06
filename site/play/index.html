@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080808">
+<meta name="description" content="Play GLYPHBOX games in your browser, or scan printed cards with your camera.">
+<title>Play GLYPHBOX</title>
+<link rel="icon" href="../logo/glyphbox.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../playground/playground.css">
+<link rel="stylesheet" href="play.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="../" data-logo="horizontal" aria-label="GLYPHBOX home"></a>
+  <canvas data-px="PLAY" data-scale="2" class="crumb"></canvas>
+  <nav><a href="../">HOME</a><a href="../playground/">PLAYGROUND</a><a href="https://github.com/JarodAlvarez/glyphbox">GITHUB</a></nav>
+</header>
+
+<main class="play">
+  <section class="stage">
+    <div class="screen framed"><canvas id="canvas" tabindex="0" aria-label="GLYPHBOX screen" oncontextmenu="event.preventDefault()"></canvas></div>
+    <p class="keys">ARROWS / WASD MOVE · Z / SPACE ACTION · ESC MENU</p>
+  </section>
+
+  <aside class="side">
+    <ul class="menu" id="scan-menu">
+      <li class="sel"><button id="scan"><canvas data-px="SCAN CARDS" data-scale="3"></canvas><span>CAMERA</span></button></li>
+    </ul>
+
+    <!-- camera panel: shown while scanning (scanner.js toggles it) -->
+    <div class="panel cam" id="gb-scanner-overlay" aria-hidden="true" style="display:none">
+      <div class="phead"><canvas data-px="CAMERA" data-scale="2"></canvas><button class="close" id="gb-scanner-close">CANCEL</button></div>
+      <div class="view"><video id="gb-scanner-video" autoplay muted playsinline></video><span class="aim" aria-hidden="true"></span></div>
+      <p class="status" id="gb-scanner-status">Hold a card's code up to the camera.</p>
+      <canvas id="gb-scanner-canvas" hidden></canvas>
+    </div>
+
+    <div class="block">
+      <div class="label"><span>LIBRARY</span><span>CARDS</span></div>
+      <ul class="menu small lib" id="library"></ul>
+    </div>
+
+    <p class="note">Printed cards are read by your camera, one card at a time, in any order. The screen shows each card as it's read.</p>
+  </aside>
+</main>
+
+<script src="../font.js"></script>
+<script src="../glyph-ui.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script type="module" src="scanner.js"></script>
+<script src="play.js"></script>
+<script src="../console/glyphbox.js?v=cf55f8e0" async></script>
+</body>
+</html>
