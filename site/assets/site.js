@@ -40,6 +40,7 @@ function log(t, err) {
 window.GlyphboxScanner = { start() { if (last) runCode(last.code, last.box); }, stop() {}, showScanButton() {} };
 window.Module = {
   canvas,
+  skipBoot: true,       // no boot animation or chime each time a lesson opens
   locateFile: (f, dir) => dir + f + '?' + (document.querySelector('script[src*="glyphbox.js"]')?.src.split('?')[1] || ''),
   print: () => {},
   printErr: t => { if (/error|attempt|expected/i.test(t)) log(t, true); },
