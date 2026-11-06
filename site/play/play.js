@@ -2,11 +2,10 @@
 (() => {
 'use strict';
 
-const LIB = '../playground/examples/';
-const ASSET_BYTES = 2304;
+const LIB = '../playground/examples/';   // library list
+const CARTS = 'carts/';                   // the real compiled carts
 let library = [], ready = false, pending = null;
 
-const statusEl = () => document.getElementById('gb-scanner-status');
 
 window.Module = {
   canvas: document.getElementById('canvas'),
@@ -20,51 +19,23 @@ window.Module = {
 };
 const whenReady = fn => ready ? fn() : (pending = fn);
 
-/* Run a game from source with a 2,304-byte asset block, through the
-   console's CART LOADED screen (quick = 0). */
-function runSource(src, assets, title) {
-  const M = window.Module, s = new TextEncoder().encode(src);
-  const sp = M._malloc(s.length + 1), ap = M._malloc(ASSET_BYTES);
-  M.HEAPU8.set(s, sp); M.HEAPU8[sp + s.length] = 0; M.HEAPU8.set(assets, ap);
-  const ok = M.ccall('web_load_source', 'number', ['number','number','number','number','string','number'],
-                     [sp, s.length, ap, ASSET_BYTES, title, 0]);
-  M._free(sp); M._free(ap);
+/* Load a real cart (.gbcart, LuaJIT bytecode) exactly as a scanned card
+   would be: the console recompiles it for the browser and shows CART LOADED. */
+function loadCart(bytes) {
+  const M = window.Module, ptr = M._malloc(bytes.length);
+  M.HEAPU8.set(bytes, ptr);
+  M.ccall('web_load_cart', null, ['number', 'number'], [ptr, bytes.length]);
+  M._free(ptr);
   document.getElementById('canvas').focus();
-  return ok;
 }
 
 async function play(game) {
-  const [src, bin] = await Promise.all([
-    fetch(LIB + game.id + '.lua').then(r => r.text()),
-    fetch(LIB + game.id + '.bin').then(r => r.arrayBuffer()),
-  ]);
+  const bytes = new Uint8Array(await fetch(CARTS + game.id + '.gbcart').then(r => r.arrayBuffer()));
   whenReady(() => {
     if (window.GlyphboxScanner) GlyphboxScanner.stop();
-    runSource(src, new Uint8Array(bin), game.title);
+    loadCart(bytes);
   });
 }
-
-/* A scanned .gbcart holds LuaJIT bytecode, which the browser's Lua can't
-   run. If its title is a library game, run the published source with the
-   cart's own sprites, map and sound instead. */
-window.GlyphboxPlay = {
-  onCart(cart) {
-    const title = new TextDecoder().decode(cart.slice(4, 20)).replace(/\0.*$/s, '').trim();
-    const game = library.find(g => g.title === title);
-    const compressed = (cart[0x1e] | cart[0x1f] << 8) & 0x0002;
-    const codeEnd = compressed ? 0x24 + (cart[0x20] | cart[0x21] << 8) : 0x1020;
-    const assets = cart.slice(codeEnd, codeEnd + ASSET_BYTES);
-    if (game && assets.length === ASSET_BYTES) {
-      fetch(LIB + game.id + '.lua').then(r => r.text()).then(src => runSource(src, assets, game.title));
-      return true;
-    }
-    const M = window.Module;
-    M.ccall('web_load_cart', null, ['number','number'], [0, 0]);     // back to the splash
-    const msg = `${title || 'This cart'} can only run on a GLYPHBOX console for now. The browser can play the library games.`;
-    setTimeout(() => { const el = statusEl(); if (el) el.textContent = msg; document.getElementById('gb-scanner-overlay').style.display = 'block'; }, 0);
-    return true;
-  },
-};
 
 document.getElementById('scan').onclick = () => whenReady(() => {
   window.Module.ccall('web_begin_scan', null, [], []);

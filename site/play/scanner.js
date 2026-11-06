@@ -19,6 +19,8 @@
  * Progress goes to the console through web_scan_status(total, cur, mask), the
  * same status the Pi scanner sends, so the console draws the scan screen,
  * plays the ready chime and the per-card ding, and fills its card pips.
+ * The assembled .gbcart goes to web_load_cart() unchanged: the runtime
+ * recompiles its LuaJIT bytecode for the browser (web/ljtrans.c).
  * The page only needs a camera preview and, optionally, a one-line status.
  */
 
@@ -100,9 +102,6 @@ const GlyphboxScanner = (() => {
 
   function deliverCart(cartBytes) {
     setStatus("All cards read. Starting the game.");
-    /* A page can take the cart itself (the web runtime can't run LuaJIT
-       bytecode, so the site's Play page swaps in published source). */
-    if (window.GlyphboxPlay && window.GlyphboxPlay.onCart(cartBytes)) { hideOverlay(); return; }
     const ptr = Module._malloc(cartBytes.length);
     Module.HEAPU8.set(cartBytes, ptr);
     Module.ccall("web_load_cart", null, ["number","number"], [ptr, cartBytes.length]);
