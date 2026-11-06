@@ -49,14 +49,15 @@ function save() {
 function restore() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (!s) return;
+    if (!s) return false;
     state.code = s.code ?? state.code;
     state.example = s.example ?? state.example;
     state.tile = s.tile ?? 0;
     if (s.assets) state.assets = Uint8Array.from(atob(s.assets), c => c.charCodeAt(0)).slice(0, ASSET_BYTES);
-  } catch (e) { /* ignore */ }
+    return true;
+  } catch (e) { return false; }
 }
-restore();
+const restored = restore();            // false on a first visit
 
 /* ── Output log ────────────────────────────────────────────────────────── */
 const logEl = document.getElementById('log');
@@ -245,7 +246,12 @@ function renderExamples() {
     li.appendChild(b); ul.appendChild(li);
   });
 }
-fetch('examples/index.json').then(r => r.json()).then(list => { examples = examples.concat(list); renderExamples(); })
+const DEFAULT_EXAMPLE = 'runner';       // what a first visit opens on
+fetch('examples/index.json').then(r => r.json()).then(list => {
+  examples = examples.concat(list);
+  renderExamples();
+  if (!restored && list.some(x => x.id === DEFAULT_EXAMPLE)) loadExample(DEFAULT_EXAMPLE);
+})
   .catch(() => renderExamples());
 
 /* ── Downloads ─────────────────────────────────────────────────────────── */
