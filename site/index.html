@@ -35,7 +35,8 @@
   .console { display:grid; grid-template-columns:minmax(0, 1fr) 340px; gap:56px; align-items:center; }
   .device { position:relative; background:#ececea; }
   .device img { width:100%; display:block; }
-  .device canvas { position:absolute; left:0; top:0; width:100px; height:100px; transform-origin:0 0; }
+  .device canvas, .device .glass { position:absolute; left:0; top:0; width:100px; height:100px; transform-origin:0 0; }
+  .device .glass { background:#080808; }   /* the display, switched on: flat black (the screen's own black), no render glare */
   .swatch { width:16px; height:16px; border:2px solid currentColor; flex:none; }
   .lineup { width:100%; display:block; margin-top:56px; }
   .specs { list-style:none; display:grid; grid-template-columns:1fr 1fr; column-gap:48px; margin-top:56px; font-size:14px; }
@@ -126,7 +127,7 @@
     <div class="sec"><div class="bar"><canvas data-px="THE CONSOLE" data-scale="3"></canvas><span class="mark" data-logo="mark"></span></div>
       <p class="lead">A 3D-printed case around a Raspberry Pi 3, with a camera under the card slot and a controller that docks on magnets. Its boot screen and menus use the same 1-bit screen and font as the games.</p></div>
     <div class="console">
-      <div class="device framed"><img id="devimg" src="img/renders/white_02_front_right.jpg" alt="GLYPHBOX console, white"><canvas id="live" aria-hidden="true"></canvas></div>
+      <div class="device framed"><img id="devimg" src="img/renders/white_02_front_right.jpg" alt="GLYPHBOX console, white"><div class="glass" id="glass" aria-hidden="true"></div><canvas id="live" aria-hidden="true"></canvas></div>
       <div>
         <canvas data-px="COLORWAYS" data-scale="3" style="margin:0 0 20px 18px"></canvas>
         <ul class="menu" id="colors"></ul>
@@ -308,8 +309,12 @@ $ <b>glyph print</b> mygame.gbcart -o cards.pdf</pre>
     const glass = GLASS.map(([fx, fy]) => [fx * W, fy * Hh]);
     const G = homography([[0, 0], [1, 0], [1, 1], [0, 1]], glass);          // unit square -> glass
     const sq = [[1 / 6, 0], [5 / 6, 0], [5 / 6, 1], [1 / 6, 1]].map(([x, y]) => apply(G, x, y));
-    const H = homography([[0, 0], [100, 0], [100, 100], [0, 100]], sq);    // 100px canvas -> square
-    cv.style.transform = `matrix3d(${H[0]},${H[3]},0,${H[6]},${H[1]},${H[4]},0,${H[7]},0,0,1,0,${H[2]},${H[5]},0,${H[8]})`;
+    const box = [[0, 0], [100, 0], [100, 100], [0, 100]];                 // a 100px element
+    const m3d = H => `matrix3d(${H[0]},${H[3]},0,${H[6]},${H[1]},${H[4]},0,${H[7]},0,0,1,0,${H[2]},${H[5]},0,${H[8]})`;
+    cv.style.transform = m3d(homography(box, sq));
+    // the whole glass, grown a hair past its edges so no render glare shows at the border
+    const e = 0.006, edge = [[-e, -e], [1 + e, -e], [1 + e, 1 + e], [-e, 1 + e]].map(([x, y]) => apply(G, x, y));
+    document.getElementById('glass').style.transform = m3d(homography(box, edge));
   }
   const devimg = document.getElementById('devimg');
   devimg.addEventListener('load', placeScreen);
