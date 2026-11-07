@@ -20,6 +20,7 @@ Expect a weekend, plus the wait for printed parts and the controller board. You'
 | `glyphbox_rear_panel.stl` | 1 |
 | `glyphbox_screen_clip.stl` | 5 |
 | `glyphbox_usb_clamp.stl` | 1 |
+| Controller: `glyphbox_top_shell.stl`, `glyphbox_bottom_shell.stl` | 1 each |
 
 - **Controller board:** a custom PCB. Upload [`glyphbox-controller-v2-gerbers.zip`](https://github.com/JarodAlvarez/glyphbox/tree/main/hardware/controller/pcb) to a PCB maker such as JLCPCB: 2 layers, default options. The KiCad project is next to it.
 
@@ -66,7 +67,7 @@ The speaker is a Game Boy DMG speaker, driven by a small PAM8403 amplifier board
 5. Before fitting the membranes, test it: plug it into any computer and short each button's pads with tweezers. The arrows, Z and F2 keys should register.
 6. Fit the reproduction Game Boy Pocket membranes and buttons, then close the printed shell with two M2.5 screws. Glue two stacked 10 × 2 mm magnets into the shell's magnet pocket.
 
-> **The controller shell isn't published yet.** Its button mounts are being redesigned, because the originals are adapted from a shell under a no-derivatives license. Until then, the board works as a bare controller.
+> **The shell's membrane mounts:** the [controller shell](https://github.com/JarodAlvarez/glyphbox/tree/main/hardware/controller/shell) is published without the collars and posts that hold the membranes, because they come from the Lensless Game Boy Pocket shell (CC BY-NC-ND). Download that shell from PCBWay and run `build_brackets.py`, then `build_merged_stl.py`, to add them to your own copy before printing. The shell's README has the steps.
 
 The controller is a USB keyboard, so it needs no driver:
 
